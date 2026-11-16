@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  host-tests:
+    name: Host tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Unit, ISP and decoder tests
+        run: make -C tests test
+      - name: Tools compile
+        run: python -m py_compile tools/*.py tests/*.py
+
+  esphome:
+    name: ESPHome build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install ESPHome (version pinned in Pipfile)
+        run: |
+          version=$(sed -n 's/^esphome = "==\(.*\)"/\1/p' Pipfile)
+          pip install "esphome==${version}"
+      - name: Example config from this checkout
+        run: python tests/local_example.py build/ci
+      - name: Validate
+        run: esphome config build/ci/example.yaml
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio
+            build/ci/.esphome
+          key: esphome-${{ hashFiles('Pipfile') }}-${{ hashFiles('components/**') }}
+          restore-keys: esphome-${{ hashFiles('Pipfile') }}-
+      - name: Compile
+        run: esphome compile build/ci/example.yaml

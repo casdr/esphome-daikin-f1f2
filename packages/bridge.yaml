@@ -1,0 +1,78 @@
+# The P1P2MQTT bridge (v1.2/v1.3) and the system-wide entities.
+# Include once; add one unit package per indoor unit.
+esp8266:
+  board: esp12e
+  restore_from_flash: true
+
+logger:
+  baud_rate: 0  # UART0 belongs to the ATmega
+
+api:
+  actions:
+    # Research: write a raw frame (hex without checksum). Needs the write switch.
+    - action: write_frame
+      variables:
+        hex: string
+      then:
+        - lambda: 'id(daikin_bus).write_frame_hex(hex);'
+    # Research: P1P2Monitor command such as "V" (version). Needs the write switch;
+    # only V/T/O/G/H are passed on.
+    - action: atmega_command
+      variables:
+        cmd: string
+      then:
+        - lambda: 'id(daikin_bus).send_atmega_command(cmd);'
+
+uart:
+  id: atmega
+  tx_pin: GPIO1
+  rx_pin: GPIO3
+  baud_rate: 250000
+  rx_buffer_size: 1024
+
+daikin_diii:
+  id: daikin_bus
+  uart_id: atmega
+  reset_pin: GPIO5
+  serial_enable_pin: GPIO15
+  # Update the ATmega firmware from ESPHome (docs/atmega.md).
+  # SCK is serial_enable_pin, RESET is reset_pin.
+  isp:
+    mosi_pin: GPIO2
+    miso_pin: GPIO0
+
+sensor:
+  - platform: daikin_diii
+    outdoor_temperature: {name: Outdoor temperature}
+    evaporating_temperature: {name: Evaporating temperature}
+    condensing_temperature: {name: Condensing temperature}
+    discharge_temperature_1: {name: Discharge temperature module 1}
+    discharge_temperature_2: {name: Discharge temperature module 2}
+    compressor_step_1: {name: Compressor step module 1}
+    compressor_step_2: {name: Compressor step module 2}
+    fan_step_1: {name: Outdoor fan step module 1}
+    fan_step_2: {name: Outdoor fan step module 2}
+    capacity: {name: Capacity (raw)}
+    frames_ok: {name: Bus frames OK}
+    frames_error: {name: Bus frames with errors}
+    write_queue: {name: Bus write queue}
+
+binary_sensor:
+  - platform: daikin_diii
+    compressor_running: {name: Compressor}
+    defrost: {name: Defrost or oil return}
+
+text_sensor:
+  - platform: daikin_diii
+    clock: {name: System clock}
+    last_write: {name: Last bus command, entity_category: diagnostic}
+
+switch:
+  - platform: daikin_diii
+    # Off = read-only. Starts off until you turn it on, then keeps its state.
+    write_enable: {name: Bus writes enabled, restore_mode: RESTORE_DEFAULT_OFF}
+    atmega_programming: {name: ATmega programming}
+
+button:
+  - platform: daikin_diii
+    reset_atmega: {name: Restart ATmega}

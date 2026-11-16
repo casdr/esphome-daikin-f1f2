@@ -1,0 +1,79 @@
+# Example: a P1P2MQTT bridge (v1.2/v1.3) on the F1F2 bus of a Daikin VRV system.
+#
+# Made-up layout: one remote-control group of three 4-way cassettes (1-00, 1-01,
+# 1-02; master 1-01) and one unit on its own (1-03). Find your own addresses,
+# groups and B1 indexes with docs/configuration.md before you turn on writes.
+substitutions:
+  name: daikin-f1f2
+  friendly_name: Daikin F1F2
+
+esphome:
+  name: ${name}
+  friendly_name: ${friendly_name}
+  areas:
+    - id: area_living
+      name: Living room
+    - id: area_study
+      name: Study
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  ap:
+    ssid: Daikin-F1F2 Fallback
+    password: !secret ap_password
+
+captive_portal:
+
+api:
+  encryption:
+    key: !secret api_key
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+external_components:
+  - source: github://casdr/esphome-daikin-f1f2@main
+    components: [daikin_diii]
+
+# Optional: publish every raw bus frame to MQTT, in the stock P1P2MQTT format.
+# daikin_diii:
+#   raw_mqtt:
+#     broker: 192.168.1.10
+#     username: !secret mqtt_username
+#     password: !secret mqtt_password
+
+packages:
+  daikin:
+    url: https://github.com/casdr/esphome-daikin-f1f2
+    ref: main
+    refresh: 1d
+    files:
+      # The bridge and the system-wide entities.
+      - path: packages/bridge.yaml
+
+      # Group 1-01: master 1-01 with members 1-00 and 1-02, all cassettes.
+      - path: packages/group-master.yaml
+        vars: {id: "01", name: Daikin 1-01, area: area_living}
+      - path: packages/unit.yaml
+        vars: {id: "00", group: "01", name: Daikin 1-00, area: area_living}
+      - path: packages/unit.yaml
+        vars: {id: "02", group: "01", name: Daikin 1-02, area: area_living}
+      - path: packages/outlets.yaml
+        vars: {id: "00"}
+      - path: packages/outlets.yaml
+        vars: {id: "01"}
+      - path: packages/outlets.yaml
+        vars: {id: "02"}
+
+      # 1-03 on its own. With its B1 index it also gets the remote and pipe
+      # temperatures (docs/configuration.md).
+      - path: packages/group-master.yaml
+        vars: {id: "03", name: Daikin 1-03, area: area_study, b1_index: "0x09"}
+      - path: packages/remote-sensors.yaml
+        vars: {id: "03"}
+
+      # A hydrobox at 2-00:
+      # - path: packages/hydrobox.yaml
+      #   vars: {id: "10", name: Daikin 2-00 hydrobox, area: area_study}

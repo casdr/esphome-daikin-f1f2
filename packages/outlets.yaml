@@ -1,0 +1,17 @@
+# Per-outlet flap setting of a 4-way cassette, by pair of opposite outlets.
+# Write-only: the units don't report it on F1F2 (docs/configuration.md).
+# vars:
+#   id: DIII address as two hex digits, of a unit added with unit.yaml or group-master.yaml
+select:
+  - platform: daikin_diii
+    type: outlet_pair
+    unit: 0x${id}
+    pair: "1+3"
+    name: Outlets 1+3
+    device_id: dev_${id}
+  - platform: daikin_diii
+    type: outlet_pair
+    unit: 0x${id}
+    pair: "2+4"
+    name: Outlets 2+4
+    device_id: dev_${id}

@@ -1,0 +1,16 @@
+# The wired remote's temperature and the indoor coil's pipe temperatures of a
+# group master. They come from B1 frames, so the unit needs its b1_index.
+# vars:
+#   id: DIII address as two hex digits, as in group-master.yaml
+sensor:
+  - platform: daikin_diii
+    unit: 0x${id}
+    remote_temperature:
+      name: Remote controller temperature
+      device_id: dev_${id}
+    pipe_a_temperature:
+      name: Liquid pipe temperature
+      device_id: dev_${id}
+    pipe_b_temperature:
+      name: Gas pipe temperature
+      device_id: dev_${id}

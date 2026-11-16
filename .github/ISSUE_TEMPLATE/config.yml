@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: P1P2MQTT bridge hardware and firmware
+    url: https://github.com/Arnold-n/P1P2MQTT
+    about: Questions about the bridge itself or the P1P2Monitor firmware.

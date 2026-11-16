@@ -1,0 +1,27 @@
+name: Protocol finding or bus log
+description: A frame type, value or system this component doesn't know yet, or a correction to docs/protocol.md.
+labels: [protocol]
+body:
+  - type: textarea
+    id: finding
+    attributes:
+      label: What you found
+      description: The frame type, bytes and what you think they mean, or the hypothesis in docs/protocol.md that your data confirms or contradicts.
+    validations:
+      required: true
+  - type: textarea
+    id: how
+    attributes:
+      label: How you saw it
+      description: What happened on the system at that moment (a unit switched on, a setting changed on the remote, a fault code on the controller).
+  - type: input
+    id: system
+    attributes:
+      label: Daikin system
+      description: Outdoor unit model, indoor unit types, central controller if any.
+  - type: textarea
+    id: frames
+    attributes:
+      label: Frames
+      description: The raw lines (`R T ...` or the TSV from tools/f1f2_log.py). For long logs, attach a file.
+      render: text
