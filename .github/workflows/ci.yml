@@ -43,7 +43,7 @@ jobs:
         run: python tests/local_example.py build/ci
       - name: Validate
         run: esphome config build/ci/example.yaml
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: |
             ~/.platformio
