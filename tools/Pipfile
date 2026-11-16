@@ -6,4 +6,4 @@ name = "pypi"
 # Python 3.11 or newer.
 [packages]
 paho-mqtt = "==2.2.0"
-requests = "==2.32.3"
+requests = "==2.34.2"
