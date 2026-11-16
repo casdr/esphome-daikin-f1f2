@@ -1,0 +1,9 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+# Python 3.11 or newer.
+[packages]
+paho-mqtt = "==2.2.0"
+requests = "==2.32.3"

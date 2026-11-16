@@ -1,0 +1,18 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+# Python 3.11 or newer.
+[packages]
+# The daikin_diii component uses ESPHome internals: bump deliberately and
+# rebuild/test after every upgrade.
+esphome = "==2026.10.2"
+# bleak (an ESPHome dependency) needs these per platform. pipenv locks for the
+# platform it runs on and drops their markers, so they are listed here with
+# markers to keep Pipfile.lock installable on both macOS and Linux.
+pyobjc-core = {version = "==13.0", markers = "sys_platform == 'darwin'"}
+pyobjc-framework-cocoa = {version = "==13.0", markers = "sys_platform == 'darwin'"}
+pyobjc-framework-corebluetooth = {version = "==13.0", markers = "sys_platform == 'darwin'"}
+pyobjc-framework-libdispatch = {version = "==13.0", markers = "sys_platform == 'darwin'"}
+dbus-fast = {version = "==5.2.0", markers = "sys_platform == 'linux'"}

@@ -1,0 +1,12 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+  # ESPHome is pinned on purpose: the component uses its internals. Bump it by
+  # hand, after building and testing against the new version.
+  - package-ecosystem: pip
+    directory: /tools
+    schedule:
+      interval: monthly

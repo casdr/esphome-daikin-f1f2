@@ -1,0 +1,20 @@
+# ESPHome / Python
+.esphome/
+.venv/
+__pycache__/
+*.pyc
+secrets.yaml
+
+# Host test builds
+tests/build/
+
+# Your own bus logs (see captures/README.md)
+captures/*.tsv
+captures/*.tsv.gz
+
+# Firmware images from P1P2MQTT (CC BY-NC-ND: download them, don't commit them)
+*.hex
+*.bin
+
+# Local CI build (tests/local_example.py)
+build/

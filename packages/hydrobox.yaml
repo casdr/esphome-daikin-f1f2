@@ -1,0 +1,35 @@
+# A Daikin hydrobox on the bus: read-only sensors, no climate.
+# vars:
+#   id:   DIII address as two hex digits ("10" = 2-00)
+#   name: device name in Home Assistant
+#   area: id of an area defined under esphome: areas:
+esphome:
+  devices:
+    - id: dev_${id}
+      name: ${name}
+      area_id: ${area}
+
+daikin_diii:
+  units:
+    - address: 0x${id}
+      group: 0x${id}
+
+sensor:
+  - platform: daikin_diii
+    unit: 0x${id}
+    room_temperature:
+      name: Temperature
+      device_id: dev_${id}
+    demand_step:
+      name: Heat demand step
+      device_id: dev_${id}
+
+binary_sensor:
+  - platform: daikin_diii
+    unit: 0x${id}
+    power:
+      name: Power
+      device_id: dev_${id}
+    heating_active:
+      name: Heat demand
+      device_id: dev_${id}

@@ -1,0 +1,45 @@
+# An indoor unit that is a member of a group (not the group master).
+# vars:
+#   id:       DIII address as two hex digits ("00" = 1-00, "10" = 2-00)
+#   group:    the group master's address, two hex digits
+#   name:     device name in Home Assistant
+#   area:     id of an area defined under esphome: areas:
+#   b1_index: optional, "0x.." (docs/configuration.md)
+defaults:
+  b1_index: "0xFF"  # unknown
+
+esphome:
+  devices:
+    - id: dev_${id}
+      name: ${name}
+      area_id: ${area}
+
+daikin_diii:
+  units:
+    - address: 0x${id}
+      group: 0x${group}
+      b1_index: ${b1_index}
+
+sensor:
+  - platform: daikin_diii
+    unit: 0x${id}
+    room_temperature:
+      name: Temperature
+      device_id: dev_${id}
+
+binary_sensor:
+  - platform: daikin_diii
+    unit: 0x${id}
+    power:
+      name: Power
+      device_id: dev_${id}
+    heating_active:
+      name: Heat demand
+      device_id: dev_${id}
+
+text_sensor:
+  - platform: daikin_diii
+    unit: 0x${id}
+    mode:
+      name: Mode
+      device_id: dev_${id}
