@@ -343,6 +343,42 @@ static void test_outlet_pair() {
   CHECK(f[2] == 0x03 && f[7] == 0x00);
 }
 
+// Operation command 40: the builder makes the iTM's own frames (source 0x0A,
+// with checksum) for an indoor unit and for the hydrobox (35 bytes, seen
+// 2026-11-16: heat + on at 05:08:28, off at 21:07:02).
+static void test_operation() {
+  const struct { uint8_t dst; bool hydrobox; uint8_t pp, mm, xx, sp; const char *frame; } cases[] = {
+      {0x10, true, 0x00, 0x11, 0x01, 0, "A50A10141D4000110100000000000080000000000000000000000000000000000000E3"},
+      {0x10, true, 0x03, 0x00, 0x00, 0, "A50A10141D4003000000000000000080000000000000000000000000000000000000F2"},
+      {0x10, true, 0x02, 0x00, 0x00, 0, "A50A10141D4002000000000000000080000000000000000000000000000000000000F3"},
+  };
+  for (auto &c : cases) {
+    uint8_t f[HYDROBOX_OPERATION_LEN + 1];
+    size_t n = build_operation(f, 0x0A, c.dst, c.hydrobox, c.pp, c.mm, c.xx, c.sp);
+    CHECK(n == HYDROBOX_OPERATION_LEN);
+    f[n] = frame_checksum(f, n);
+    auto want = hex(c.frame);
+    CHECK(want.size() == n + 1 && memcmp(f, want.data(), want.size()) == 0);
+    CHECK(is_setting_command(f, n));
+  }
+  // indoor unit: the 26-byte frame the climate entity has always sent
+  uint8_t f[HYDROBOX_OPERATION_LEN];
+  size_t n = build_operation(f, 0x30, 0x07, false, 0x03, 0, 0, 0);
+  auto want = hex(POWER_ON);
+  CHECK(n == OPERATION_LEN && want.size() == n && memcmp(f, want.data(), n) == 0);
+  n = build_operation(f, 0x30, 0x07, false, 0x00, 0x00, 0x00, 22);
+  CHECK(f[11] == 22 && f[12] == 0x80 && f[15] == 0x80);
+  // the queue takes the long frame from our own source and adds the checksum
+  WriteQueue q;
+  q.set_enabled(true);
+  n = build_operation(f, 0x30, 0x10, true, 0x02, 0, 0, 0);
+  CHECK(q.enqueue(f, n, 0) == WriteResult::OK);
+  std::string out;
+  CHECK(q.next(0, out) && out.size() == 2 * (n + 1) && out.compare(0, 14, "A53010141D4002") == 0);
+  auto sent = hex(out.c_str());
+  CHECK(frame_valid(sent.data(), sent.size()));
+}
+
 static void test_pending_setting() {
   const uint32_t P = PendingSetting::PENDING_MS;
   PendingSetting sp;
@@ -396,6 +432,7 @@ int main() {
   test_decoder_known_values();
   test_airflow();
   test_outlet_pair();
+  test_operation();
   if (failures) {
     std::printf("%d check(s) failed\n", failures);
     return 1;

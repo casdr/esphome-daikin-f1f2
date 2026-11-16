@@ -23,6 +23,7 @@ CONF_ADDRESS = "address"
 CONF_B1_INDEX = "b1_index"
 CONF_GROUP = "group"
 CONF_UNIT = "unit"
+CONF_HYDROBOX = "hydrobox"
 
 daikin_diii_ns = cg.esphome_ns.namespace("daikin_diii")
 DaikinDIII = daikin_diii_ns.class_("DaikinDIII", cg.Component, uart.UARTDevice)
@@ -32,6 +33,8 @@ UNIT_SCHEMA = cv.Schema(
         cv.Required(CONF_ADDRESS): cv.hex_uint8_t,
         cv.Optional(CONF_B1_INDEX): cv.hex_uint8_t,
         cv.Optional(CONF_GROUP): cv.hex_uint8_t,
+        # a hydrobox takes 35-byte operation commands (power, mode)
+        cv.Optional(CONF_HYDROBOX, default=False): cv.boolean,
     }
 )
 
@@ -121,4 +124,4 @@ async def to_code(config):
     cg.add(var.set_write_budget(budget["burst"], (365 * 24 * 3600 * 1000) // budget["per_year"]))
     for u in config[CONF_UNITS]:
         addr = u[CONF_ADDRESS]
-        cg.add(var.add_unit(addr, u.get(CONF_B1_INDEX, 0xFF), u.get(CONF_GROUP, addr)))
+        cg.add(var.add_unit(addr, u.get(CONF_B1_INDEX, 0xFF), u.get(CONF_GROUP, addr), u[CONF_HYDROBOX]))

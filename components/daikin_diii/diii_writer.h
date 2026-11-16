@@ -58,6 +58,36 @@ inline bool is_setting_command(const uint8_t *b, size_t n) {
   return n >= 6 && b[0] == 0xA5 && (b[5] == 0x40 || b[5] == 0x41);
 }
 
+// Operation command 40 (power, mode, setpoint), without checksum:
+// A5 <src> <dst> 14 <len> | 40 PP MM XX 00 00 SP SF 00 00 80 00 ...
+// PP 03 on / 02 off / 00 unchanged, MM 0x10|mode (0 fan, 1 heat, 2 cool) or 00,
+// XX follows the mode (00 fan, 01 heat, 02 cool), SP setpoint in whole degrees
+// with SF 0x80, or both 00 (docs/protocol.md).
+// Indoor units take a 20-byte payload. The hydrobox takes the same first 11
+// payload bytes in a 29-byte payload padded with zeros, as the iTM sends it:
+//   A5 0A 10 14 1D 40 03 00 .. (on), 40 02 00 .. (off), 40 00 11 01 00 .. (heat)
+// Its water setpoint is somewhere in the padding, encoding unknown.
+static const size_t OPERATION_LEN = 25;
+static const size_t HYDROBOX_OPERATION_LEN = 34;
+inline size_t build_operation(uint8_t *f, uint8_t src, uint8_t dst, bool hydrobox, uint8_t pp, uint8_t mm,
+                              uint8_t xx, uint8_t sp) {
+  const size_t n = hydrobox ? HYDROBOX_OPERATION_LEN : OPERATION_LEN;
+  for (size_t i = 0; i < n; i++) f[i] = 0;
+  f[0] = 0xA5;
+  f[1] = src;
+  f[2] = dst;
+  f[3] = 0x14;
+  f[4] = (uint8_t) (n - 5);
+  f[5] = 0x40;
+  f[6] = pp;
+  f[7] = mm;
+  f[8] = xx;
+  f[11] = sp;
+  f[12] = sp ? 0x80 : 0x00;
+  f[15] = 0x80;
+  return n;
+}
+
 // Group command 41 (fan speed and/or airflow direction), without checksum:
 // A5 <src> <group> 14 06 | 41 16 XX 00 00 00. XX high nibble 0x80|speed<<4
 // (0 auto, 1 low, 3 medium, 5 high), low nibble 0x08|direction (0-4 position,

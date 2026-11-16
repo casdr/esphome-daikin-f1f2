@@ -1,4 +1,4 @@
-# A Daikin hydrobox on the bus: read-only sensors, no climate.
+# A Daikin hydrobox on the bus: sensors and a climate for on/off and heat/cool.
 # vars:
 #   id:   DIII address as two hex digits ("10" = 2-00)
 #   name: device name in Home Assistant
@@ -13,6 +13,13 @@ daikin_diii:
   units:
     - address: 0x${id}
       group: 0x${id}
+      hydrobox: true
+
+climate:
+  - platform: daikin_diii
+    unit: 0x${id}
+    name: Climate
+    device_id: dev_${id}
 
 sensor:
   - platform: daikin_diii
@@ -22,6 +29,12 @@ sensor:
       device_id: dev_${id}
     demand_step:
       name: Heat demand step
+      device_id: dev_${id}
+    setting_commands:
+      name: Setting commands
+      device_id: dev_${id}
+    write_budget:
+      name: Write budget left
       device_id: dev_${id}
 
 binary_sensor:

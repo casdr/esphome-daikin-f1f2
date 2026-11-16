@@ -46,7 +46,8 @@ For the system:
 | Diagnostics | Bus frames OK / with errors, write queue, last bus command, compressor and fan steps and a capacity value (raw, partly guessed). |
 
 A Daikin hydrobox on the same bus gets its temperature, power, heat demand and a *heat
-demand step* (0-15) sensor.
+demand step* (0-15) sensor, and a climate that switches it on and off and between heat
+and cool. It has no target temperature: the leaving-water setpoint isn't decoded.
 
 Switches: *Bus writes enabled* (off = read-only), *ATmega programming* (see
 [docs/atmega.md](docs/atmega.md)) and *Raw logging* (only with `raw_mqtt`). A button
@@ -185,7 +186,9 @@ F1F2 bus ── ATmega (P1P2Monitor) ──UART 250000── ESP8266 (ESPHome, d
   isn't seen. Only pairs of opposite outlets can be set, only to *Normal* or *Fixed (0)*,
   and only the effect on a group master has been confirmed.
 - Malfunction codes are not decoded yet: no unit has been in fault while logging.
-- The hydrobox can't be controlled yet.
+- The hydrobox's water setpoint can't be set, and *cool* hasn't been tried on a hydrobox.
+  The hydrobox doesn't report its mode, so the climate shows *heat* while it's on until
+  this bridge sends *cool*.
 - An iTM marks a unit switched off by another controller as *setback*; switching it on and
   off once from the iTM clears that.
 - Only tested on the P1P2MQTT bridge v1.2/v1.3 with an ESP8266.

@@ -16,6 +16,14 @@ class DaikinClimate : public climate::Climate, public Parented<DaikinDIII> {
   climate::ClimateTraits traits() override {
     climate::ClimateTraits t;
     t.add_feature_flags(climate::CLIMATE_SUPPORTS_CURRENT_TEMPERATURE);
+    if (this->is_hydrobox_()) {
+      // power and heat/cool only: the water setpoint's encoding is unknown
+      t.add_supported_mode(climate::CLIMATE_MODE_OFF);
+      t.add_supported_mode(climate::CLIMATE_MODE_HEAT);
+      t.add_supported_mode(climate::CLIMATE_MODE_COOL);
+      t.set_visual_current_temperature_step(0.1);
+      return t;
+    }
     t.add_supported_mode(climate::CLIMATE_MODE_OFF);
     t.add_supported_mode(climate::CLIMATE_MODE_HEAT);
     t.add_supported_mode(climate::CLIMATE_MODE_COOL);
@@ -40,6 +48,10 @@ class DaikinClimate : public climate::Climate, public Parented<DaikinDIII> {
       ESP_LOGW("daikin_diii.climate", "Group 0x%02X: command ignored, bus writes are disabled", this->group_);
       this->parent_->note_write_refused("writes disabled");
       this->publish_state();  // snap the UI back to the real state
+      return;
+    }
+    if (this->is_hydrobox_()) {
+      this->control_hydrobox_(call);
       return;
     }
     if (call.get_mode().has_value() &&
@@ -115,6 +127,10 @@ class DaikinClimate : public climate::Climate, public Parented<DaikinDIII> {
     this->mode_.observe(u.mode);
     this->setpoint_.observe(std::isnan(u.setpoint) ? -1 : (int) lroundf(u.setpoint));
     this->fan_.observe(u.fan);
+    if (u.hydrobox) {
+      this->update_hydrobox_(u);
+      return;
+    }
     // after a restart: publish nothing until power and fan are known, so HA
     // does not show a made-up state (fan "on", no setpoint) for a minute
     if (u.power < 0 || u.fan < 0) return;
@@ -158,7 +174,70 @@ class DaikinClimate : public climate::Climate, public Parented<DaikinDIII> {
   }
 
  protected:
+  bool is_hydrobox_() const {
+    const Unit *u = this->parent_->get_unit(this->group_);
+    return u != nullptr && u->hydrobox;
+  }
+
+  // Hydrobox: on/off and heat/cool with the same 40 command as indoor units
+  // (a 35-byte frame, built by the hub). Mode codes as for indoor units: heat
+  // (11 01) is what the iTM sends; cool (12 02) is not confirmed on the hydrobox.
+  void control_hydrobox_(const climate::ClimateCall &call) {
+    if (!call.get_mode().has_value()) {
+      this->publish_state();
+      return;
+    }
+    const Unit *u = this->parent_->get_unit(this->group_);
+    const uint32_t now = millis();
+    const int bus_power = u != nullptr ? u->power : -1;
+    auto m = *call.get_mode();
+    bool ok = true;
+    if (m == climate::CLIMATE_MODE_OFF) {
+      if (this->power_.changes(0, bus_power, bus_power < 0, now)) {
+        ok = this->parent_->command_power(this->group_, false);
+        if (ok) this->power_.commanded(0, now);
+      }
+    } else if (m == climate::CLIMATE_MODE_HEAT || m == climate::CLIMATE_MODE_COOL) {
+      // The hydrobox reports no mode on the bus that we can read, so the mode
+      // is sent when it differs from what this entity last showed.
+      uint8_t low = m == climate::CLIMATE_MODE_HEAT ? 1 : 2;
+      if (this->mode != m || bus_power != 1) {
+        ok = this->parent_->command_mode(this->group_, low);
+        if (ok) this->hydrobox_mode_ = m;
+      }
+      if (ok && this->power_.changes(1, bus_power, bus_power < 0, now)) {
+        ok = this->parent_->command_power(this->group_, true);
+        if (ok) this->power_.commanded(1, now);
+      }
+    } else {
+      this->parent_->note_write_refused("hydrobox: off, heat or cool only");
+      ok = false;
+    }
+    if (ok) {
+      this->mode = m;
+    } else {
+      ESP_LOGW("daikin_diii.climate", "Hydrobox 0x%02X: command refused, see Last bus command", this->group_);
+    }
+    this->publish_state();
+  }
+
+  void update_hydrobox_(const Unit &u) {
+    if (u.power < 0) return;
+    // The hydrobox reports power once a minute (F5 22B), so until the bus
+    // confirms a command the commanded power counts (PendingSetting).
+    const int power = this->power_.current(u.power, millis());
+    climate::ClimateMode m = power == 1 ? this->hydrobox_mode_ : climate::CLIMATE_MODE_OFF;
+    bool changed = this->mode != m || (!std::isnan(u.room) && this->current_temperature != u.room);
+    if (!changed) return;
+    this->mode = m;
+    if (!std::isnan(u.room)) this->current_temperature = u.room;
+    this->publish_state();
+  }
+
   uint8_t group_{0};
+  // last heat/cool mode commanded to a hydrobox; shown while it is on (heat
+  // until this bridge commands cool)
+  climate::ClimateMode hydrobox_mode_{climate::CLIMATE_MODE_HEAT};
   // last commanded values (see PendingSetting)
   ::diii::PendingSetting power_, mode_, setpoint_, fan_;
 };

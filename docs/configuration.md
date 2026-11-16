@@ -15,7 +15,7 @@ The packages write the hub and entity config below for you: one include per indo
 | `unit.yaml` | `id`, `group`, `name`, `area`, `b1_index` (optional) | A device, the unit as a member of `group`, temperature, mode, power and heat demand. |
 | `remote-sensors.yaml` | `id` | Remote controller and pipe temperatures. The unit needs its `b1_index`. |
 | `outlets.yaml` | `id` | The outlet pair selects of a 4-way cassette. |
-| `hydrobox.yaml` | `id`, `name`, `area` | A device, the hydrobox, temperature, heat demand step, power and heat demand. |
+| `hydrobox.yaml` | `id`, `name`, `area` | A device, the hydrobox (`hydrobox: true`), climate (on/off, heat/cool), temperature, heat demand step, power, heat demand, setting commands and write budget. |
 
 - `id` and `group` are addresses as two hex digits (`"01"` = `1-01`, `"10"` = `2-00`).
   Quote them, or YAML reads `01` as a number.
@@ -63,6 +63,7 @@ daikin_diii:
 | `address` | The unit's DIII-NET address. `1-00` is `0x00`, `1-15` is `0x0F`, `2-00` is `0x10`. |
 | `group` | Address of the group master: the unit with the wired remote, which commands go to. A unit on its own is its own master. Default: its own address. |
 | `b1_index` | Index of the unit in the `B1` frames, which carry the remote, pipe and intake temperatures. Optional; without it those sensors stay empty and the climate shows the return-air temperature. |
+| `hydrobox` | `true` for a hydrobox: it takes a longer operation command (35 bytes). A setpoint command to it is refused. Default `false`. |
 
 Every unit in a group follows its master: one command switches the whole group. Configure
 the climate, airflow select, setpoint and fan on the master. Units that aren't in the table
@@ -116,7 +117,7 @@ indoor unit; without it they're system-wide.
 
 | Platform | Key | Notes |
 | --- | --- | --- |
-| `climate` | | On a group master. `unit` is required. |
+| `climate` | | On a group master or a hydrobox. `unit` is required. On a hydrobox it offers off, heat and cool, without a target temperature. |
 | `sensor` | `room_temperature` | Return air at the unit (`F5`). |
 | `sensor` | `setpoint` | |
 | `sensor` | `remote_temperature` | The wired remote's sensor. Needs `b1_index`. Units without a remote report a fixed 22.06 °C, which is ignored for the climate. |

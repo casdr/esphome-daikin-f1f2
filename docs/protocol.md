@@ -275,7 +275,9 @@ The hydrobox sends no 31 B frame, so its power state comes from status bit `0x01
 | 14–15 | hydrobox temperature (water?), 8.8 | 23.66 against 23.7 on the iTM |
 | 19 | `80` normally, `81` during a possible defrost | seen once |
 
-The 37 B hydrobox frame changes between off and heating, but no field is decoded.
+The 37 B hydrobox frame changes between off and heating. Byte 6 is power (`00`/`01`),
+within 2 s of a command. Byte 7 has always been `01` *(hyp: the mode, 1 = heat)*; the
+decoder doesn't read this frame yet.
 
 #### `F5` page `91` (hourly)
 
@@ -533,7 +535,11 @@ Examples:
   `40 03`). Its schedule sends three per group master: mode + setpoint, fan
   (`41 16 B0`), and on (`40 03`).
 - The hydrobox gets the same `40` command with a longer payload:
-  `A5 0A 10 14 1D | 40 …` (35 B), for example `40 00 11 01 …` (heat) and `40 03` (on).
+  `A5 0A 10 14 1D | 40 …` (35 B), for example `40 00 11 01 …` (heat), `40 03` (on) and
+  `40 02` (off). The first 11 payload bytes are laid out as above; the other 9 are `00`.
+  Sent from a third-party source address (`0x30`), heat, on and off are ACKed and the
+  hydrobox follows within 2 s. Its leaving-water setpoint is not in any command seen
+  so far, and cool (`40 00 12 02`) has not been tried on it.
 
 ### `41` fan, airflow and outlet command
 
@@ -758,7 +764,8 @@ Examples for unit 0:
 - `F5` 23 B byte 5 (`0x82`), byte 20 (expansion valve or capacity request?), and
   whether units that report airflow `0` have fixed flaps.
 - `F5` 31 B byte 8 for fan, bytes 17 and 23.
-- The hydrobox: its 37 B frame, and whether byte 9 is a capacity step.
+- The hydrobox: the rest of its 37 B frame, whether byte 9 is a capacity step, and
+  how the leaving-water setpoint is commanded.
 - `B1` 46 B bytes 11–12 (a temperature, 21–24 °C), which pipe is A and B, `B1` 34 B
   byte 21 and the mode bytes.
 - The B1 pair 02/05 (1-08/1-00), and why `AD` sources do not match the B1 mapping.

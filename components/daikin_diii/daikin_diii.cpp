@@ -19,10 +19,11 @@ namespace daikin_diii {
 static const char *const TAG = "daikin_diii";
 static const char *const MAGIC = "1P2P";
 
-void DaikinDIII::add_unit(uint8_t addr, uint8_t b1_index, uint8_t group) {
+void DaikinDIII::add_unit(uint8_t addr, uint8_t b1_index, uint8_t group, bool hydrobox) {
   Unit u{};
   u.addr = addr;
   u.group = group;
+  u.hydrobox = hydrobox;
   // Without a B1 index no B1 frame will tell whether the group has a remote,
   // so the climate uses the return-air temperature right away.
   if (b1_index == 0xFF) u.remote_known = true;
@@ -201,9 +202,16 @@ void DaikinDIII::process_queue_() {
 }
 
 bool DaikinDIII::command_op_(uint8_t group, uint8_t pp, uint8_t mm, uint8_t xx, uint8_t sp) {
-  uint8_t f[25] = {0xA5, this->source_address_, group, 0x14, 0x14, 0x40, pp, mm, xx, 0x00, 0x00,
-                   sp, (uint8_t) (sp ? 0x80 : 0x00), 0x00, 0x00, 0x80};
-  return this->enqueue_frame(f, sizeof(f));
+  // the hydrobox takes the same command in a longer frame (diii_writer.h)
+  const Unit *u = this->get_unit(group);
+  const bool hydrobox = u != nullptr && u->hydrobox;
+  if (hydrobox && sp != 0) {
+    this->note_write_refused("hydrobox setpoint unknown");
+    return false;
+  }
+  uint8_t f[::diii::HYDROBOX_OPERATION_LEN];
+  size_t n = ::diii::build_operation(f, this->source_address_, group, hydrobox, pp, mm, xx, sp);
+  return this->enqueue_frame(f, n);
 }
 
 bool DaikinDIII::command_power(uint8_t group, bool on) { return this->command_op_(group, on ? 0x03 : 0x02, 0, 0, 0); }

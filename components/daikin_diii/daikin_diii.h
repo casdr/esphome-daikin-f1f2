@@ -52,6 +52,7 @@ class DaikinAirflowSelect;
 struct Unit {
   uint8_t addr;
   uint8_t group;
+  bool hydrobox{false};  // takes 35-byte operation commands (diii_writer.h)
   // last state seen on the bus
   int8_t power{-1};       // F5 31B byte 6
   uint8_t mode{0};        // 0x60 fan, 0x61 heat, 0x62 cool, ...
@@ -100,7 +101,7 @@ class DaikinDIII : public Component, public uart::UARTDevice, public DecoderSink
     this->mqtt_prefix_ = topic_prefix;
     this->mqtt_suffix_ = topic_suffix;
   }
-  void add_unit(uint8_t addr, uint8_t b1_index, uint8_t group);
+  void add_unit(uint8_t addr, uint8_t b1_index, uint8_t group, bool hydrobox = false);
   void set_source_address(uint8_t a) { this->source_address_ = a; }
   // Write budget per group (see diii_writer.h); burst 0 disables it.
   void set_write_budget(uint16_t burst, uint32_t refill_ms) { this->writer_.budget().configure(burst, refill_ms); }
@@ -134,6 +135,7 @@ class DaikinDIII : public Component, public uart::UARTDevice, public DecoderSink
   bool write_frame_hex(const std::string &hex);
   bool enqueue_frame(const uint8_t *b, size_t n);
   // Group commands (to the group master address), see docs/protocol.md.
+  // A unit added as hydrobox gets the long frame; a setpoint for it is refused.
   bool command_power(uint8_t group, bool on);
   bool command_mode(uint8_t group, uint8_t mode_low);  // 0 fan, 1 heat, 2 cool
   bool command_setpoint(uint8_t group, uint8_t celsius);
