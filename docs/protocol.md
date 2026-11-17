@@ -276,8 +276,9 @@ The hydrobox sends no 31 B frame, so its power state comes from status bit `0x01
 | 19 | `80` normally, `81` during a possible defrost | seen once |
 
 The 37 B hydrobox frame changes between off and heating. Byte 6 is power (`00`/`01`),
-within 2 s of a command. Byte 7 has always been `01` *(hyp: the mode, 1 = heat)*; the
-decoder doesn't read this frame yet.
+within 2 s of a command. Byte 7 has always been `01` *(hyp: the mode, 1 = heat)*.
+Byte 13 has always been `16` (22) *(hyp: a setpoint in whole °C, at the same offset as in
+the indoor units' 31 B frame)*. The decoder doesn't read this frame yet.
 
 #### `F5` page `91` (hourly)
 
@@ -538,8 +539,12 @@ Examples:
   `A5 0A 10 14 1D | 40 …` (35 B), for example `40 00 11 01 …` (heat), `40 03` (on) and
   `40 02` (off). The first 11 payload bytes are laid out as above; the other 9 are `00`.
   Sent from a third-party source address (`0x30`), heat, on and off are ACKed and the
-  hydrobox follows within 2 s. Its leaving-water setpoint is not in any command seen
-  so far, and cool (`40 00 12 02`) has not been tried on it.
+  hydrobox follows within 2 s. Cool (`40 00 12 02`) has not been tried on it.
+- An iTM schedule event with mode and setpoint ticked sent the hydrobox the setpoint
+  bytes too: `40 00 11 01 00 00 16 80 …` (heat, 22 °C), ACKed. The hydrobox's 37 B
+  status showed `16` at byte 13 before and after, so it's not known whether it took the
+  value or what it means for a hydrobox. The leaving-water setpoint has not been seen in
+  any command yet.
 
 ### `41` fan, airflow and outlet command
 
@@ -698,6 +703,14 @@ commands* counter shows the commands from every source.
   writing over P1/P2 is not useful while an iTM controls the units; send `A5`
   commands on F1F2 instead.
 - The iTM's schedules keep running and send the same `A5` commands.
+- A schedule *stop* event sends more than off when mode, fan or setpoint are ticked in
+  it: per group master the mode with setpoint (`40 00 11 01 00 00 16 80`), the fan
+  (`41 16 B0`) and then off (`40 02`). That overwrites the setpoint another controller
+  set. Untick them to get a plain `40 02`.
+- The iTM runs its schedule on its own clock, which can drift (its time settings have
+  no sync option): one
+  ran 6.5 minutes fast. The outdoor unit's clock (`E9` page `E6`) was just as fast
+  *(hyp: the iTM sets it)*, so it shows the drift.
 
 ### What can go wrong
 
