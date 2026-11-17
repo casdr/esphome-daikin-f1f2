@@ -49,10 +49,25 @@ year's budget in two to three months.
 
 ## Queue and retries
 
-The ATmega takes one frame at a time, so writes are queued at least 1.5 s apart. When the
-ATmega reports a collision or refuses a frame within 1.5 s of the send, the frame is sent
-again, at most 3 times. *Bus write queue* shows how many are waiting; turning writes off
-empties it.
+Writes go out one at a time. A frame only counts as written once the ATmega reads it back
+from the bus intact: its echo, an `R` line with exactly the bytes that were sent. Handing a
+frame to the ATmega is not enough. On a busy bus the ATmega can refuse it (`Refusing to write
+packet while previous packet wasn't finished`, when the frame before it is still waiting for a
+gap), take it and never put it on the bus, or put it on the bus damaged. On one installation 7
+of 67 writes went that way in two days, among them two hydrobox offs, and the hydrobox stayed
+on.
+
+- The next frame waits until the previous one has its echo, and goes out at least 1.5 s after
+  it. The echo usually comes within 2.5 s of the send.
+- No intact echo within 10 s: the frame is sent again. A refusal or collision reported within
+  1.5 s of the send also sends it again straight away.
+- After 3 resends it is given up on: *Last bus command* shows `lost <frame>`, the log has an
+  error and *Bus writes lost* goes up. A confirmed frame shows as `on bus <frame>`.
+- *Bus write queue* shows how many are waiting; turning writes off empties it.
+
+A lost setting usually shows in the entity too: the climate entity falls back to what the unit
+reports once the command's pending time (1 minute) has passed. Watch *Bus writes lost* in your
+monitoring.
 
 ## Next to an iTM or wired remotes
 

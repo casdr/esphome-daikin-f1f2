@@ -40,7 +40,7 @@ SYSTEM_RAW = {
     "compressor_value_1": (10, None, "mdi:numeric"),
     "compressor_value_2": (11, None, "mdi:numeric"),
 }
-DIAG = {"frames_ok": 0, "frames_error": 1, "write_queue": 2}
+DIAG = {"frames_ok": 0, "frames_error": 1, "write_queue": 2, "writes_lost": 3}
 # key -> index in diii::UnitField, plain numbers (hydrobox)
 UNIT_RAW = {"demand_step": 6}
 # key -> index in UnitDiag (per group master)
@@ -62,6 +62,10 @@ DIAG_SCHEMA = {
     "frames_error": sensor.sensor_schema(icon="mdi:alert-circle-outline", accuracy_decimals=0,
                                          state_class=STATE_CLASS_TOTAL_INCREASING, entity_category=ENTITY_CATEGORY_DIAGNOSTIC),
     "write_queue": sensor.sensor_schema(icon="mdi:tray-full", accuracy_decimals=0, state_class=STATE_CLASS_MEASUREMENT,
+                                        entity_category=ENTITY_CATEGORY_DIAGNOSTIC),
+    # frames this bridge gave up on: no intact echo on the bus after every retry (since boot)
+    "writes_lost": sensor.sensor_schema(icon="mdi:email-remove-outline", accuracy_decimals=0,
+                                        state_class=STATE_CLASS_TOTAL_INCREASING,
                                         entity_category=ENTITY_CATEGORY_DIAGNOSTIC),
 }
 UNIT_DIAG_SCHEMA = {

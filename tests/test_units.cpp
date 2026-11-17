@@ -71,7 +71,9 @@ static void test_checksum_and_spacing() {
   auto b = hex(out.c_str());
   CHECK(frame_valid(b.data(), b.size()));
   CHECK(out.rfind(POWER_ON, 0) == 0);
-  CHECK(!q.next(1000 + WriteQueue::SPACING_MS - 1, out));  // too soon
+  CHECK(!q.next(1000 + WriteQueue::SPACING_MS, out));  // no echo yet
+  CHECK(q.on_bus_frame(b.data(), b.size()));
+  CHECK(!q.next(1000 + WriteQueue::SPACING_MS - 1, out));  // echo seen, but too soon
   CHECK(q.next(1000 + WriteQueue::SPACING_MS, out));
   CHECK(q.size() == 0);
 }
@@ -100,7 +102,9 @@ static void test_retry() {
     t += WriteQueue::SPACING_MS;
     CHECK(q.next(t, out) && out == first);
   }
+  CHECK(q.lost() == 0);
   CHECK(!q.on_refused(t + 10));
+  CHECK(q.lost() == 1);  // refused on the last retry: given up
   CHECK(q.size() == 0);
 
   // a refusal long after the send must not replay the old frame
@@ -112,6 +116,8 @@ static void test_retry() {
   CHECK(q.size() == 0);
 
   // the same command sent again later gets its full retry budget
+  auto echo = hex(out.c_str());
+  CHECK(q.on_bus_frame(echo.data(), echo.size()));  // the previous one made it
   CHECK(q.enqueue_hex(POWER_ON, 0) == WriteResult::OK);
   t += WriteQueue::SPACING_MS;
   CHECK(q.next(t, out));
@@ -421,10 +427,76 @@ static void test_atmega_commands() {
   CHECK(!atmega_command_allowed("T12345678901234567"));  // too long
 }
 
+// A frame counts as written only once its echo is read back from the bus
+// (2026-11-17: refused, dropped and damaged hydrobox frames were reported as
+// sent, and the hydrobox stayed on).
+static void test_echo() {
+  const char *HB_OFF = "A53010141D4002000000000000000080000000000000000000000000000000000000";  // 34 B, no checksum
+  WriteQueue q;
+  q.set_enabled(true);
+  std::string out, f;
+  uint8_t n = 0;
+  CHECK(q.enqueue_hex(HB_OFF, 0) == WriteResult::OK);
+  CHECK(q.enqueue_hex(POWER_ON, 0) == WriteResult::OK);
+  uint32_t t = 1000;
+  CHECK(q.next(t, out));
+  const std::string hb = out;
+  auto full = hex(hb.c_str());
+  CHECK(full.size() == 35 && frame_valid(full.data(), full.size()));
+
+  // the next frame waits for the echo, also past the spacing
+  CHECK(!q.next(t + WriteQueue::SPACING_MS, out));
+  CHECK(q.check_echo(t + WriteQueue::ECHO_TIMEOUT_MS - 1, f) == EchoResult::NONE);
+
+  // other frames on the bus do not count: another unit's status, the iTM's
+  // command for the same group, and our frame cut off after 30 bytes (as seen
+  // at 18:46:41)
+  auto status = hex("F510FF1C10820101000000031000192C000000805F0A");
+  CHECK(!q.on_bus_frame(status.data(), status.size()));
+  auto itm = full;
+  itm[1] = ITM_ADDRESS;
+  CHECK(!q.on_bus_frame(itm.data(), itm.size()));
+  CHECK(!q.on_bus_frame(full.data(), 30));
+  CHECK(q.in_flight());
+
+  // no intact echo in time: the same frame again, ahead of the queue
+  CHECK(q.check_echo(t + WriteQueue::ECHO_TIMEOUT_MS, f, &n) == EchoResult::RETRY && n == 1 && f == hb);
+  CHECK(q.check_echo(t + WriteQueue::ECHO_TIMEOUT_MS + 1, f) == EchoResult::NONE);  // reported once
+  t += WriteQueue::ECHO_TIMEOUT_MS;
+  CHECK(q.next(t, out) && out == hb);
+
+  // its echo arrives: done, and the next frame goes out
+  CHECK(q.on_bus_frame(full.data(), full.size()));
+  CHECK(!q.in_flight());
+  CHECK(!q.on_bus_frame(full.data(), full.size()));  // a second copy is just bus traffic
+  CHECK(q.check_echo(t + 10 * WriteQueue::ECHO_TIMEOUT_MS, f) == EchoResult::NONE);
+  t += WriteQueue::SPACING_MS;
+  CHECK(q.next(t, out) && out.rfind(POWER_ON, 0) == 0);
+
+  // never an echo: MAX_RETRIES more sends, then lost, and the queue moves on
+  CHECK(q.enqueue_hex(HB_OFF, 0) == WriteResult::OK);
+  for (int i = 1; i <= WriteQueue::MAX_RETRIES; i++) {
+    t += WriteQueue::ECHO_TIMEOUT_MS;
+    CHECK(q.check_echo(t, f, &n) == EchoResult::RETRY && n == i);
+    CHECK(q.next(t, out) && out == f);
+  }
+  t += WriteQueue::ECHO_TIMEOUT_MS;
+  CHECK(q.check_echo(t, f) == EchoResult::LOST && f == out);
+  CHECK(q.lost() == 1);
+  CHECK(q.next(t, out) && out == hb);  // the hydrobox frame queued behind it
+  CHECK(q.size() == 0);
+
+  // switching writes off forgets the frame in flight
+  q.set_enabled(false);
+  CHECK(!q.in_flight());
+  CHECK(q.check_echo(t + 10 * WriteQueue::ECHO_TIMEOUT_MS, f) == EchoResult::NONE);
+}
+
 int main() {
   test_guards();
   test_checksum_and_spacing();
   test_retry();
+  test_echo();
   test_atmega_commands();
   test_budget();
   test_queue_uses_budget();

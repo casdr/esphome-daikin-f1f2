@@ -191,6 +191,19 @@ bool DaikinDIII::enqueue_frame(const uint8_t *b, size_t n) {
 
 void DaikinDIII::process_queue_() {
   std::string frame;
+  uint8_t retry = 0;
+  switch (this->writer_.check_echo(millis(), frame, &retry)) {
+    case ::diii::EchoResult::RETRY:
+      ESP_LOGW(TAG, "No echo on the bus for %s, retry %u", frame.c_str(), retry);
+      this->set_last_write_(std::string("no echo, retry ") + std::to_string(retry) + ": " + frame);
+      break;
+    case ::diii::EchoResult::LOST:
+      ESP_LOGE(TAG, "Bus write lost (no echo after %u retries): %s", ::diii::WriteQueue::MAX_RETRIES, frame.c_str());
+      this->set_last_write_(std::string("lost ") + frame);
+      break;
+    case ::diii::EchoResult::NONE:
+      break;
+  }
   if (!this->writer_.next(millis(), frame)) return;
   ESP_LOGI(TAG, "Bus write: %s", frame.c_str());
   this->write_str(MAGIC);
@@ -367,6 +380,17 @@ void DaikinDIII::handle_line_(const char *line) {
       if (n == 1) return;  // ACK (06) etc.
       if (::diii::frame_valid(buf, n)) {
         this->frames_ok_++;
+        // our own frame read back from the bus: only now is it written
+        if (buf[0] == 0xA5 && this->writer_.on_bus_frame(buf, n)) {
+          std::string hex;
+          char b2[3];
+          for (size_t i = 0; i < n; i++) {
+            snprintf(b2, sizeof(b2), "%02X", buf[i]);
+            hex += b2;
+          }
+          ESP_LOGD(TAG, "Bus write confirmed: %s", hex.c_str());
+          this->set_last_write_(std::string("on bus ") + hex);
+        }
         if (::diii::is_setting_command(buf, n)) {  // from the iTM, a remote or us
           Unit *u = this->find_unit_(buf[2]);
           if (u != nullptr) u->commands++;
@@ -389,7 +413,12 @@ void DaikinDIII::handle_line_(const char *line) {
         this->publish_raw_('E', line);
         this->set_last_write_(line);
         uint8_t retry = 0;
-        if (this->writer_.on_refused(millis(), &retry)) ESP_LOGW(TAG, "ATmega refused/collision, retry %u", retry);
+        const uint32_t lost_before = this->writer_.lost();
+        if (this->writer_.on_refused(millis(), &retry)) {
+          ESP_LOGW(TAG, "ATmega refused/collision, retry %u", retry);
+        } else if (this->writer_.lost() != lost_before) {
+          ESP_LOGE(TAG, "Bus write lost (refused after %u retries)", ::diii::WriteQueue::MAX_RETRIES);
+        }
       }
       break;
     default:
@@ -534,6 +563,7 @@ void DaikinDIII::publish_diagnostics_() {
   pub(this->diag_sensors_[(int) DiagSensor::FRAMES_OK], (float) this->frames_ok_);
   pub(this->diag_sensors_[(int) DiagSensor::FRAMES_ERR], (float) this->frames_err_);
   pub(this->diag_sensors_[(int) DiagSensor::WRITE_QUEUE], (float) this->writer_.size());
+  pub(this->diag_sensors_[(int) DiagSensor::WRITES_LOST], (float) this->writer_.lost());
   uint32_t now = millis();
   for (auto &u : this->units_) {
     pub(u.diag[(int) UnitDiag::COMMANDS], (float) u.commands);

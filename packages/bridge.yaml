@@ -56,6 +56,7 @@ sensor:
     frames_ok: {name: Bus frames OK}
     frames_error: {name: Bus frames with errors}
     write_queue: {name: Bus write queue}
+    writes_lost: {name: Bus writes lost}
 
 binary_sensor:
   - platform: daikin_diii

@@ -41,7 +41,7 @@ using ::diii::UnitField;
 enum class UnitBinary : uint8_t { POWER = 0, HEATING = 1, COUNT };
 enum class UnitText : uint8_t { MODE = 0, FAN = 1, COUNT };
 enum class SystemBinary : uint8_t { COMPRESSOR = 0, RAW_MQTT = 1, DEFROST = 2, COUNT };
-enum class DiagSensor : uint8_t { FRAMES_OK = 0, FRAMES_ERR = 1, WRITE_QUEUE = 2, COUNT };
+enum class DiagSensor : uint8_t { FRAMES_OK = 0, FRAMES_ERR = 1, WRITE_QUEUE = 2, WRITES_LOST = 3, COUNT };
 // per group master: setting commands seen on the bus (any source), write budget left
 enum class UnitDiag : uint8_t { COMMANDS = 0, BUDGET = 1, COUNT };
 enum class SystemText : uint8_t { CLOCK = 0, LAST_WRITE = 1, COUNT };

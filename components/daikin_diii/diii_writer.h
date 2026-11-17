@@ -237,13 +237,26 @@ class PendingSetting {
   bool set_{false};
 };
 
+// What became of the frame in flight, see WriteQueue::check_echo().
+enum class EchoResult : uint8_t { NONE, RETRY, LOST };
+
+// Frames go out one at a time. A frame counts as written only once the ATmega
+// reads it back from the bus intact (its echo, an R line with the same bytes):
+// "sent" only means the ATmega took it, and on a busy bus it can still refuse
+// it (when the previous frame is still waiting for a gap), drop it, or put it
+// on the bus damaged. Until the echo arrives (or ECHO_TIMEOUT_MS passes) the
+// next frame waits; a frame without an intact echo is sent again, at most
+// MAX_RETRIES times, and then counts as lost.
 class WriteQueue {
  public:
   static const size_t MAX_QUEUE = 16;
-  static const uint32_t SPACING_MS = 1500;  // the ATmega takes one frame at a time
+  static const uint32_t SPACING_MS = 1500;  // minimum time between two sends
   static const uint8_t MAX_RETRIES = 3;
   // A refusal/collision line only counts for the frame sent within this window.
   static const uint32_t RETRY_WINDOW_MS = 1500;
+  // Longest wait for the echo. On a real bus the ATmega put frames out
+  // within 2.5 s of taking them, 7 s once on a busy bus (2026-11-17).
+  static const uint32_t ECHO_TIMEOUT_MS = 10000;
 
   void set_enabled(bool en) {
     this->enabled_ = en;
@@ -286,10 +299,45 @@ class WriteQueue {
     return this->enqueue(buf, n, now_ms);
   }
 
-  // Next frame to send at time now_ms, honouring the spacing. Returns false
+  // The frame in flight has had no intact echo for ECHO_TIMEOUT_MS: queue it
+  // again (RETRY, with its retry number) or give up on it (LOST). `frame` is
+  // the frame concerned. Call before next().
+  EchoResult check_echo(uint32_t now_ms, std::string &frame, uint8_t *retry_no = nullptr) {
+    if (!this->in_flight_ || now_ms - this->last_send_ms_ < ECHO_TIMEOUT_MS) return EchoResult::NONE;
+    this->in_flight_ = false;
+    frame = this->last_.hex;
+    if (this->last_.retries >= MAX_RETRIES) {
+      this->lost_++;
+      return EchoResult::LOST;
+    }
+    Item again{this->last_.hex, (uint8_t) (this->last_.retries + 1)};
+    if (retry_no != nullptr) *retry_no = again.retries;
+    this->queue_.push_front(again);
+    return EchoResult::RETRY;
+  }
+
+  // A valid frame was read from the bus. Returns true when it is the echo of
+  // the frame in flight, which is then done.
+  bool on_bus_frame(const uint8_t *b, size_t n) {
+    if (!this->in_flight_ || this->last_.hex.size() != 2 * n) return false;
+    for (size_t i = 0; i < n; i++) {
+      int hi = hexval(this->last_.hex[2 * i]), lo = hexval(this->last_.hex[2 * i + 1]);
+      if (hi < 0 || lo < 0 || (uint8_t) (hi << 4 | lo) != b[i]) return false;
+    }
+    this->in_flight_ = false;
+    return true;
+  }
+
+  // Frames given up on after MAX_RETRIES sends without an intact echo.
+  uint32_t lost() const { return this->lost_; }
+  bool in_flight() const { return this->in_flight_; }
+
+  // Next frame to send at time now_ms: none while the previous one waits for
+  // its echo, and not within SPACING_MS of the previous send. Returns false
   // when nothing is due.
   bool next(uint32_t now_ms, std::string &frame) {
     if (this->queue_.empty() || !this->enabled_) return false;
+    if (this->in_flight_) return false;
     if (this->sent_any_ && now_ms - this->last_send_ms_ < SPACING_MS) return false;
     this->last_ = this->queue_.front();
     this->queue_.pop_front();
@@ -302,11 +350,15 @@ class WriteQueue {
 
   // The ATmega reported a refusal or collision. Re-queue the last frame at the
   // front, but only if it was sent within RETRY_WINDOW_MS and has retries
-  // left. A frame is retried at most once per refusal line.
+  // left (otherwise it counts as lost). A frame is retried at most once per
+  // refusal line. A refusal outside the window is left to check_echo().
   bool on_refused(uint32_t now_ms, uint8_t *retry_no = nullptr) {
     if (!this->in_flight_ || now_ms - this->last_send_ms_ >= RETRY_WINDOW_MS) return false;
     this->in_flight_ = false;
-    if (this->last_.retries >= MAX_RETRIES) return false;
+    if (this->last_.retries >= MAX_RETRIES) {
+      this->lost_++;
+      return false;
+    }
     Item again{this->last_.hex, (uint8_t) (this->last_.retries + 1)};
     if (retry_no != nullptr) *retry_no = again.retries;
     this->queue_.push_front(again);
@@ -325,6 +377,7 @@ class WriteQueue {
   bool in_flight_{false};
   bool sent_any_{false};
   uint32_t last_send_ms_{0};
+  uint32_t lost_{0};
 };
 
 }  // namespace diii

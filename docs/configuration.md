@@ -137,7 +137,7 @@ indoor unit; without it they're system-wide.
 | --- | --- |
 | `sensor` | `outdoor_temperature`, `evaporating_temperature`, `condensing_temperature`, `discharge_temperature_1`, `discharge_temperature_2` |
 | `sensor` (raw, diagnostic) | `capacity`, `compressor_step_1`, `compressor_step_2`, `fan_step_1`, `fan_step_2`, `compressor_value_1`, `compressor_value_2` |
-| `sensor` (diagnostic) | `frames_ok`, `frames_error`, `write_queue` |
+| `sensor` (diagnostic) | `frames_ok`, `frames_error`, `write_queue`, `writes_lost` |
 | `binary_sensor` | `compressor_running`, `defrost`, `raw_mqtt_connected` |
 | `text_sensor` | `clock`, `last_write` |
 | `switch` | `write_enable`, `raw_logging`, `atmega_programming` |
