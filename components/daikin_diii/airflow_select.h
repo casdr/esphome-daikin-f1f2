@@ -82,7 +82,7 @@ class DaikinOutletPairSelect : public select::Select, public Component, public P
   }
 
   void setup() override {
-    this->pref_ = global_preferences->make_preference<uint8_t>(this->get_preference_hash());
+    this->pref_ = this->make_entity_preference<uint8_t>();
     uint8_t saved_index;
     if (this->pref_.load(&saved_index) && saved_index < 2) this->publish_state((size_t) saved_index);
   }
