@@ -492,6 +492,23 @@ static void test_echo() {
   CHECK(q.check_echo(t + 10 * WriteQueue::ECHO_TIMEOUT_MS, f) == EchoResult::NONE);
 }
 
+static void test_group_action() {
+  const float n = NAN;
+  CHECK(group_action(-1, 0x61, 1, false, 20, 21) == Action::UNKNOWN);
+  CHECK(group_action(0, 0x61, 1, true, 20, 21) == Action::OFF);
+  CHECK(group_action(1, 0x61, 1, true, 20, 21) == Action::HEATING);
+  CHECK(group_action(1, 0x61, 0, true, 20, 21) == Action::IDLE);
+  CHECK(group_action(1, 0x61, -1, true, 20, 21) == Action::UNKNOWN);
+  CHECK(group_action(1, 0x62, 1, true, 25, 24) == Action::COOLING);
+  CHECK(group_action(1, 0x60, -1, true, n, n) == Action::FAN);
+  CHECK(group_action(1, 0x60, 0, false, n, n) == Action::IDLE);
+  CHECK(group_action(1, 0x67, 1, true, n, n) == Action::DRYING);
+  CHECK(group_action(1, 0x63, 1, true, 20, 21) == Action::HEATING);
+  CHECK(group_action(1, 0x63, 1, true, 23, 21) == Action::COOLING);
+  CHECK(group_action(1, 0x63, 1, true, n, 21) == Action::UNKNOWN);
+  CHECK(group_action(1, 0x00, 1, true, 20, 21) == Action::UNKNOWN);
+}
+
 int main() {
   test_guards();
   test_checksum_and_spacing();
@@ -505,6 +522,7 @@ int main() {
   test_airflow();
   test_outlet_pair();
   test_operation();
+  test_group_action();
   if (failures) {
     std::printf("%d check(s) failed\n", failures);
     return 1;

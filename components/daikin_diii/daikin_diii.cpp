@@ -549,10 +549,30 @@ void DaikinDIII::on_unit_status(uint8_t addr, uint8_t bits) {
   // bit 0 = on. Use it until the first F5 31B frame (power) has been seen,
   // so power/climate are known within ~1 min after a reboot.
   if (u->power == -1) this->on_unit_power(addr, (bits & 0x01) != 0);
+  const bool action_bits_changed = u->status < 0 || ((u->status ^ bits) & 0x24) != 0;
+  u->status = bits;
 #ifdef USE_BINARY_SENSOR
   auto *s = u->binary[(int) UnitBinary::HEATING];
-  if (s != nullptr) s->publish_state((bits & 0x20) != 0);  // (hyp) 0x20 = heating demand / thermo on
+  if (s != nullptr) s->publish_state((bits & 0x20) != 0);  // 0x20 = demand (thermo on)
 #endif
+  // the group's climate shows the demand of all its units as hvac_action
+  if (action_bits_changed) {
+    Unit *master = this->find_unit_(u->group);
+    if (master != nullptr) this->notify_climate_(master);
+  }
+}
+
+int DaikinDIII::group_demand(uint8_t group, bool *fan_running) const {
+  int demand = -1;
+  bool fan = false;
+  for (const auto &u : this->units_) {
+    if (u.group != group || u.status < 0) continue;
+    if (demand < 0) demand = 0;
+    if (u.status & 0x20) demand = 1;
+    if (u.status & 0x04) fan = true;
+  }
+  if (fan_running != nullptr) *fan_running = fan;
+  return demand;
 }
 
 void DaikinDIII::publish_diagnostics_() {

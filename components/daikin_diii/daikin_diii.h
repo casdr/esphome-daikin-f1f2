@@ -66,6 +66,7 @@ struct Unit {
   DaikinAirflowSelect *airflow_select{nullptr};
   uint32_t commands{0};  // A5 40/41 frames to this address seen on the bus since boot
   int8_t role{-1};       // F5 31B @18: 1 group master, 0 member, -1 not seen yet
+  int16_t status{-1};    // status bits (F5 31B @19 / 23B @11), -1 not seen yet
 #ifdef USE_SENSOR
   sensor::Sensor *sensors[(int) UnitField::COUNT] = {};
   sensor::Sensor *diag[(int) UnitDiag::COUNT] = {};
@@ -108,6 +109,9 @@ class DaikinDIII : public Component, public uart::UARTDevice, public DecoderSink
   void set_unit_climate(uint8_t addr, DaikinClimate *c);
   void set_unit_airflow_select(uint8_t addr, DaikinAirflowSelect *s);
   const Unit *get_unit(uint8_t addr) const;
+  // Demand (status bit 0x20) of any unit in the group: 1, 0, or -1 while no
+  // unit of the group has sent its status yet. fan_running: any unit's 0x04.
+  int group_demand(uint8_t group, bool *fan_running) const;
 
 #ifdef USE_SENSOR
   void set_unit_sensor(uint8_t addr, uint8_t field, sensor::Sensor *s);

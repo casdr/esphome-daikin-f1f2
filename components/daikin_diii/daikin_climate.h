@@ -40,6 +40,8 @@ class DaikinClimate : public climate::Climate, public Parented<DaikinDIII> {
     t.set_visual_max_temperature(32);
     t.set_visual_target_temperature_step(1);
     t.set_visual_current_temperature_step(0.1);
+    // hvac_action from the units' demand bit (group_action in diii_decoder.h)
+    t.add_feature_flags(climate::CLIMATE_SUPPORTS_ACTION);
     return t;
   }
 
@@ -162,11 +164,13 @@ class DaikinClimate : public climate::Climate, public Parented<DaikinDIII> {
     // has said which (up to a minute after a restart) it stays unknown: the
     // return air is ~2 degrees warmer and would show up as a spike.
     float cur = !std::isnan(u.remote) ? u.remote : (u.remote_known ? u.room : NAN);
+    climate::ClimateAction a = this->action_(u, cur);
     bool changed = this->mode != m || (u.fan >= 0 && (!this->fan_mode.has_value() || *this->fan_mode != f)) ||
                    (!std::isnan(u.setpoint) && this->target_temperature != u.setpoint) ||
-                   (!std::isnan(cur) && this->current_temperature != cur);
+                   (!std::isnan(cur) && this->current_temperature != cur) || this->action != a;
     if (!changed) return;
     this->mode = m;
+    this->action = a;
     if (u.fan >= 0) this->fan_mode = f;
     if (!std::isnan(u.setpoint)) this->target_temperature = u.setpoint;
     if (!std::isnan(cur)) this->current_temperature = cur;
@@ -174,6 +178,22 @@ class DaikinClimate : public climate::Climate, public Parented<DaikinDIII> {
   }
 
  protected:
+  climate::ClimateAction action_(const Unit &u, float current) const {
+    bool fan = false;
+    const int demand = this->parent_->group_demand(this->group_, &fan);
+    float target = std::isnan(u.setpoint) ? this->target_temperature : u.setpoint;
+    switch (::diii::group_action(u.power, u.mode, demand, fan, current, target)) {
+      case ::diii::Action::OFF: return climate::CLIMATE_ACTION_OFF;
+      case ::diii::Action::HEATING: return climate::CLIMATE_ACTION_HEATING;
+      case ::diii::Action::COOLING: return climate::CLIMATE_ACTION_COOLING;
+      case ::diii::Action::FAN: return climate::CLIMATE_ACTION_FAN;
+      case ::diii::Action::DRYING: return climate::CLIMATE_ACTION_DRYING;
+      // unknown shows as idle: ESPHome has no "unknown" action, and idle is
+      // what the unit does until its first status frame (within ~1 min)
+      default: return climate::CLIMATE_ACTION_IDLE;
+    }
+  }
+
   bool is_hydrobox_() const {
     const Unit *u = this->parent_->get_unit(this->group_);
     return u != nullptr && u->hydrobox;

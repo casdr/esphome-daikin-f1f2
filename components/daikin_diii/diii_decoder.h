@@ -2,6 +2,7 @@
 // Daikin F1F2 / DIII-NET frame decoder. Pure C++ (no ESPHome dependency) so it
 // can be unit-tested on the host. Field layout: see docs/protocol.md.
 
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
@@ -163,6 +164,31 @@ inline void decode_frame(const uint8_t *b, size_t len, const uint8_t *b1_to_diii
     } else if (len == 36 && page == 0xE6) {
       if (b[11] < 24 && b[12] < 60) sink.on_clock(b[11], b[12]);
     }
+  }
+}
+
+// What a group is doing now (HA's hvac_action), from its mode and the status
+// bits of its units (F5 byte 19 / 11): 0x20 is the unit's demand (thermo on),
+// 0x04 its fan running. A group has demand when any of its units has.
+// demand < 0 means no status frame seen yet. Demand in cool mode is taken as
+// cooling by analogy; the bit is only confirmed for heating so far.
+enum class Action : uint8_t { UNKNOWN, OFF, IDLE, HEATING, COOLING, FAN, DRYING };
+
+inline Action group_action(int power, uint8_t mode, int demand, bool fan_running, float current, float target) {
+  if (power < 0) return Action::UNKNOWN;
+  if (power == 0) return Action::OFF;
+  if (mode == 0x60) return fan_running ? Action::FAN : Action::IDLE;
+  if (demand < 0) return Action::UNKNOWN;
+  if (demand == 0) return Action::IDLE;
+  switch (mode) {
+    case 0x61: return Action::HEATING;
+    case 0x62: return Action::COOLING;
+    case 0x67: return Action::DRYING;
+    case 0x63:
+      // auto: the bus does not say which way it works; guess from the room
+      if (std::isnan(current) || std::isnan(target)) return Action::UNKNOWN;
+      return current < target ? Action::HEATING : Action::COOLING;
+    default: return Action::UNKNOWN;
   }
 }
 
