@@ -15,8 +15,8 @@ namespace diii {
 
 enum class WriteResult : uint8_t { OK, DISABLED, BAD_HEX, BAD_LENGTH, ITM_SOURCE, QUEUE_FULL, BUDGET };
 
-inline const char *write_result_str(WriteResult r) {
-  switch (r) {
+inline const char *write_result_str(WriteResult result) {
+  switch (result) {
     case WriteResult::OK: return "ok";
     case WriteResult::DISABLED: return "writes disabled";
     case WriteResult::BAD_HEX: return "bad hex";
@@ -54,14 +54,15 @@ inline bool atmega_command_allowed(const std::string &cmd) {
 // A setting command: A5 <src> <dst> .. .. 40 (operation: power, mode,
 // setpoint) or 41 (fan). The indoor unit stores these settings in non-volatile
 // memory, which wears out (see docs/protocol.md, "Write budget").
-inline bool is_setting_command(const uint8_t *b, size_t n) {
-  return n >= 6 && b[0] == 0xA5 && (b[5] == 0x40 || b[5] == 0x41);
+inline bool is_setting_command(const uint8_t *frame, size_t length) {
+  return length >= 6 && frame[0] == 0xA5 && (frame[5] == 0x40 || frame[5] == 0x41);
 }
 
 // Operation command 40 (power, mode, setpoint), without checksum:
 // A5 <src> <dst> 14 <len> | 40 PP MM XX 00 00 SP SF 00 00 80 00 ...
-// PP 03 on / 02 off / 00 unchanged, MM 0x10|mode (0 fan, 1 heat, 2 cool) or 00,
-// XX follows the mode (00 fan, 01 heat, 02 cool), SP setpoint in whole degrees
+// PP (power_byte) 03 on / 02 off / 00 unchanged, MM (mode_byte) 0x10|mode (0 fan,
+// 1 heat, 2 cool) or 00, XX (mode_detail) follows the mode (00 fan, 01 heat,
+// 02 cool; what else it selects is not known), SP (setpoint) in whole degrees
 // with SF 0x80, or both 00 (docs/protocol.md).
 // Indoor units take a 20-byte payload. The hydrobox takes the same first 11
 // payload bytes in a 29-byte payload padded with zeros, as the iTM sends it:
@@ -69,23 +70,23 @@ inline bool is_setting_command(const uint8_t *b, size_t n) {
 // Its water setpoint is somewhere in the padding, encoding unknown.
 static const size_t OPERATION_LEN = 25;
 static const size_t HYDROBOX_OPERATION_LEN = 34;
-inline size_t build_operation(uint8_t *f, uint8_t src, uint8_t dst, bool hydrobox, uint8_t pp, uint8_t mm,
-                              uint8_t xx, uint8_t sp) {
-  const size_t n = hydrobox ? HYDROBOX_OPERATION_LEN : OPERATION_LEN;
-  for (size_t i = 0; i < n; i++) f[i] = 0;
-  f[0] = 0xA5;
-  f[1] = src;
-  f[2] = dst;
-  f[3] = 0x14;
-  f[4] = (uint8_t) (n - 5);
-  f[5] = 0x40;
-  f[6] = pp;
-  f[7] = mm;
-  f[8] = xx;
-  f[11] = sp;
-  f[12] = sp ? 0x80 : 0x00;
-  f[15] = 0x80;
-  return n;
+inline size_t build_operation(uint8_t *frame, uint8_t src, uint8_t dst, bool hydrobox, uint8_t power_byte,
+                              uint8_t mode_byte, uint8_t mode_detail, uint8_t setpoint) {
+  const size_t length = hydrobox ? HYDROBOX_OPERATION_LEN : OPERATION_LEN;
+  for (size_t i = 0; i < length; i++) frame[i] = 0;
+  frame[0] = 0xA5;
+  frame[1] = src;
+  frame[2] = dst;
+  frame[3] = 0x14;
+  frame[4] = (uint8_t) (length - 5);
+  frame[5] = 0x40;
+  frame[6] = power_byte;
+  frame[7] = mode_byte;
+  frame[8] = mode_detail;
+  frame[11] = setpoint;
+  frame[12] = setpoint ? 0x80 : 0x00;
+  frame[15] = 0x80;
+  return length;
 }
 
 // Group command 41 (fan speed and/or airflow direction), without checksum:
@@ -94,15 +95,15 @@ inline size_t build_operation(uint8_t *f, uint8_t src, uint8_t dst, bool hydrobo
 // 7 swing); a nibble of 0 leaves that setting unchanged (docs/protocol.md).
 // fan / airflow < 0 = unchanged. Returns false for values the units do not know.
 static const size_t FAN_AIRFLOW_LEN = 11;
-inline bool build_fan_airflow(uint8_t *f, uint8_t src, uint8_t group, int fan, int airflow) {
+inline bool build_fan_airflow(uint8_t *frame, uint8_t src, uint8_t group, int fan, int airflow) {
   if (fan >= 0 && fan != 0 && fan != 1 && fan != 3 && fan != 5) return false;
   if (airflow >= 0 && airflow > 4 && airflow != 7) return false;
   if (fan < 0 && airflow < 0) return false;
-  uint8_t xx = 0;
-  if (fan >= 0) xx |= (uint8_t) (0x80 | (fan << 4));
-  if (airflow >= 0) xx |= (uint8_t) (0x08 | airflow);
-  const uint8_t frame[FAN_AIRFLOW_LEN] = {0xA5, src, group, 0x14, 0x06, 0x41, 0x16, xx, 0x00, 0x00, 0x00};
-  for (size_t i = 0; i < FAN_AIRFLOW_LEN; i++) f[i] = frame[i];
+  uint8_t fan_airflow = 0;
+  if (fan >= 0) fan_airflow |= (uint8_t) (0x80 | (fan << 4));
+  if (airflow >= 0) fan_airflow |= (uint8_t) (0x08 | airflow);
+  const uint8_t bytes[FAN_AIRFLOW_LEN] = {0xA5, src, group, 0x14, 0x06, 0x41, 0x16, fan_airflow, 0x00, 0x00, 0x00};
+  for (size_t i = 0; i < FAN_AIRFLOW_LEN; i++) frame[i] = bytes[i];
   return true;
 }
 
@@ -114,12 +115,12 @@ inline bool build_fan_airflow(uint8_t *f, uint8_t src, uint8_t group, int fan, i
 //            of F the unit ignores it (FF A0, FF 40, FF 80, FF 50 did nothing)
 // Blocking a single outlet is not possible this way.
 enum class OutletPair : uint8_t { OUTLETS_1_3 = 0, OUTLETS_2_4 = 1 };
-inline void build_outlet_pair(uint8_t *f, uint8_t src, uint8_t dst, OutletPair pair, bool fixed) {
-  const uint8_t frame[FAN_AIRFLOW_LEN] = {0xA5, src, dst, 0x14, 0x06, 0x41, 0x16, 0x00,
+inline void build_outlet_pair(uint8_t *frame, uint8_t src, uint8_t dst, OutletPair pair, bool fixed) {
+  const uint8_t bytes[FAN_AIRFLOW_LEN] = {0xA5, src, dst, 0x14, 0x06, 0x41, 0x16, 0x00,
                                           (uint8_t) (fixed ? 0xFF : 0xF4),
                                           (uint8_t) ((pair == OutletPair::OUTLETS_1_3 ? 0xA0 : 0xF0) | (fixed ? 0x0F : 0x00)),
                                           0x00};
-  for (size_t i = 0; i < FAN_AIRFLOW_LEN; i++) f[i] = frame[i];
+  for (size_t i = 0; i < FAN_AIRFLOW_LEN; i++) frame[i] = bytes[i];
 }
 
 // Token bucket per destination (group master), to keep automatic control
@@ -136,35 +137,35 @@ class WriteBudget {
   void configure(uint16_t burst, uint32_t refill_ms) {
     this->burst_ = burst;
     this->refill_ms_ = refill_ms == 0 ? 1 : refill_ms;
-    for (auto &e : this->entries_)
-      if (e.tokens > burst) e.tokens = burst;
+    for (auto &entry : this->entries_)
+      if (entry.tokens > burst) entry.tokens = burst;
   }
   bool enabled() const { return this->burst_ != 0; }
   uint16_t burst() const { return this->burst_; }
 
   uint16_t available(uint8_t dst, uint32_t now_ms) {
     if (!this->enabled()) return 0;
-    Entry *e = this->entry_(dst, now_ms);
-    if (e == nullptr) return 0;
-    this->refill_(*e, now_ms);
-    return e->tokens;
+    Entry *entry = this->entry_(dst, now_ms);
+    if (entry == nullptr) return 0;
+    this->refill_(*entry, now_ms);
+    return entry->tokens;
   }
   bool take(uint8_t dst, uint32_t now_ms) {
     if (!this->enabled()) return true;
-    Entry *e = this->entry_(dst, now_ms);
-    if (e == nullptr) return false;
-    this->refill_(*e, now_ms);
-    if (e->tokens == 0) return false;
-    e->tokens--;
+    Entry *entry = this->entry_(dst, now_ms);
+    if (entry == nullptr) return false;
+    this->refill_(*entry, now_ms);
+    if (entry->tokens == 0) return false;
+    entry->tokens--;
     return true;
   }
   // Restore a saved token count (after a restart). The refill restarts at
   // now_ms, so time spent rebooting is not credited.
   void restore(uint8_t dst, uint16_t tokens, uint32_t now_ms) {
-    Entry *e = this->entry_(dst, now_ms);
-    if (e == nullptr) return;
-    e->tokens = tokens > this->burst_ ? this->burst_ : tokens;
-    e->last_ms = now_ms;
+    Entry *entry = this->entry_(dst, now_ms);
+    if (entry == nullptr) return;
+    entry->tokens = tokens > this->burst_ ? this->burst_ : tokens;
+    entry->last_ms = now_ms;
   }
   // For saving: destination and tokens of every tracked group.
   size_t size() const { return this->entries_.size(); }
@@ -180,20 +181,20 @@ class WriteBudget {
     uint32_t last_ms;
   };
   Entry *entry_(uint8_t dst, uint32_t now_ms) {
-    for (auto &e : this->entries_)
-      if (e.dst == dst) return &e;
+    for (auto &entry : this->entries_)
+      if (entry.dst == dst) return &entry;
     if (this->entries_.size() >= MAX_ENTRIES) return nullptr;
     this->entries_.push_back(Entry{dst, this->burst_, now_ms});
     return &this->entries_.back();
   }
-  void refill_(Entry &e, uint32_t now_ms) {
-    uint32_t whole = (now_ms - e.last_ms) / this->refill_ms_;
-    if (whole > 0) {
-      uint32_t t = e.tokens + whole;
-      e.tokens = t > this->burst_ ? this->burst_ : (uint16_t) t;
-      e.last_ms += whole * this->refill_ms_;
+  void refill_(Entry &entry, uint32_t now_ms) {
+    uint32_t intervals = (now_ms - entry.last_ms) / this->refill_ms_;
+    if (intervals > 0) {
+      uint32_t refilled = entry.tokens + intervals;
+      entry.tokens = refilled > this->burst_ ? this->burst_ : (uint16_t) refilled;
+      entry.last_ms += intervals * this->refill_ms_;
     }
-    if (e.tokens >= this->burst_) e.last_ms = now_ms;  // a full bucket does not save up
+    if (entry.tokens >= this->burst_) entry.last_ms = now_ms;  // a full bucket does not save up
   }
   uint16_t burst_{DEFAULT_BURST};
   uint32_t refill_ms_{DEFAULT_REFILL_MS};
@@ -217,18 +218,18 @@ class PendingSetting {
     this->set_ = true;
   }
   // The bus reported a value: the command is confirmed when it matches.
-  void observe(int bus) {
-    if (this->set_ && bus == this->value_) this->set_ = false;
+  void observe(int bus_value) {
+    if (this->set_ && bus_value == this->value_) this->set_ = false;
   }
   // Current value: the commanded one while pending, else the bus value.
-  int current(int bus, uint32_t now_ms) const {
-    return (this->set_ && now_ms - this->ms_ < PENDING_MS) ? this->value_ : bus;
+  int current(int bus_value, uint32_t now_ms) const {
+    return (this->set_ && now_ms - this->ms_ < PENDING_MS) ? this->value_ : bus_value;
   }
   // Whether sending `target` would change the setting.
-  bool changes(int target, int bus, bool bus_unknown, uint32_t now_ms) const {
+  bool changes(int target, int bus_value, bool bus_unknown, uint32_t now_ms) const {
     bool pending = this->set_ && now_ms - this->ms_ < PENDING_MS;
     if (!pending && bus_unknown) return true;
-    return this->current(bus, now_ms) != target;
+    return this->current(bus_value, now_ms) != target;
   }
 
  protected:
@@ -258,9 +259,9 @@ class WriteQueue {
   // within 2.5 s of taking them, 7 s once on a busy bus (2026-11-17).
   static const uint32_t ECHO_TIMEOUT_MS = 10000;
 
-  void set_enabled(bool en) {
-    this->enabled_ = en;
-    if (!en) {
+  void set_enabled(bool enable) {
+    this->enabled_ = enable;
+    if (!enable) {
       this->queue_.clear();
       this->in_flight_ = false;
     }
@@ -273,30 +274,30 @@ class WriteQueue {
   // Frame without checksum; the checksum byte is appended. On OK the frame is
   // queued as uppercase hex (with checksum). A setting command also takes a
   // token from its destination's write budget.
-  WriteResult enqueue(const uint8_t *b, size_t n, uint32_t now_ms) {
+  WriteResult enqueue(const uint8_t *frame, size_t length, uint32_t now_ms) {
     if (!this->enabled_) return WriteResult::DISABLED;
-    if (n < 5 || n >= MAX_FRAME || n != (size_t) 5 + b[4]) return WriteResult::BAD_LENGTH;
-    if (b[1] == ITM_ADDRESS) return WriteResult::ITM_SOURCE;
+    if (length < 5 || length >= MAX_FRAME || length != (size_t) 5 + frame[4]) return WriteResult::BAD_LENGTH;
+    if (frame[1] == ITM_ADDRESS) return WriteResult::ITM_SOURCE;
     if (this->queue_.size() >= MAX_QUEUE) return WriteResult::QUEUE_FULL;
-    if (is_setting_command(b, n) && !this->budget_.take(b[2], now_ms)) return WriteResult::BUDGET;
-    char out[2 * MAX_FRAME + 2];
-    for (size_t i = 0; i < n; i++) snprintf(out + 2 * i, 3, "%02X", b[i]);
-    snprintf(out + 2 * n, 3, "%02X", frame_checksum(b, n));
-    this->queue_.push_back(Item{out, 0});
+    if (is_setting_command(frame, length) && !this->budget_.take(frame[2], now_ms)) return WriteResult::BUDGET;
+    char hex[2 * MAX_FRAME + 2];
+    for (size_t i = 0; i < length; i++) snprintf(hex + 2 * i, 3, "%02X", frame[i]);
+    snprintf(hex + 2 * length, 3, "%02X", frame_checksum(frame, length));
+    this->queue_.push_back(Item{hex, 0});
     return WriteResult::OK;
   }
 
   WriteResult enqueue_hex(const std::string &hex, uint32_t now_ms) {
     if (hex.size() % 2 != 0) return WriteResult::BAD_HEX;
-    uint8_t buf[MAX_FRAME];
-    size_t n = 0;
+    uint8_t frame[MAX_FRAME];
+    size_t length = 0;
     for (size_t i = 0; i + 1 < hex.size(); i += 2) {
-      int hi = hexval(hex[i]), lo = hexval(hex[i + 1]);
-      if (hi < 0 || lo < 0) return WriteResult::BAD_HEX;
-      if (n >= sizeof(buf)) return WriteResult::BAD_LENGTH;
-      buf[n++] = (uint8_t) (hi << 4 | lo);
+      int high = hexval(hex[i]), low = hexval(hex[i + 1]);
+      if (high < 0 || low < 0) return WriteResult::BAD_HEX;
+      if (length >= sizeof(frame)) return WriteResult::BAD_LENGTH;
+      frame[length++] = (uint8_t) (high << 4 | low);
     }
-    return this->enqueue(buf, n, now_ms);
+    return this->enqueue(frame, length, now_ms);
   }
 
   // The frame in flight has had no intact echo for ECHO_TIMEOUT_MS: queue it
@@ -318,11 +319,11 @@ class WriteQueue {
 
   // A valid frame was read from the bus. Returns true when it is the echo of
   // the frame in flight, which is then done.
-  bool on_bus_frame(const uint8_t *b, size_t n) {
-    if (!this->in_flight_ || this->last_.hex.size() != 2 * n) return false;
-    for (size_t i = 0; i < n; i++) {
-      int hi = hexval(this->last_.hex[2 * i]), lo = hexval(this->last_.hex[2 * i + 1]);
-      if (hi < 0 || lo < 0 || (uint8_t) (hi << 4 | lo) != b[i]) return false;
+  bool on_bus_frame(const uint8_t *frame, size_t length) {
+    if (!this->in_flight_ || this->last_.hex.size() != 2 * length) return false;
+    for (size_t i = 0; i < length; i++) {
+      int high = hexval(this->last_.hex[2 * i]), low = hexval(this->last_.hex[2 * i + 1]);
+      if (high < 0 || low < 0 || (uint8_t) (high << 4 | low) != frame[i]) return false;
     }
     this->in_flight_ = false;
     return true;

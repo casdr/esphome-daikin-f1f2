@@ -14,9 +14,9 @@ SYSTEM_BINARY = {"compressor_running": (0, DEVICE_CLASS_RUNNING), "raw_mqtt_conn
 
 
 def _validate(config):
-    if any(k in config for k in UNIT_BINARY) and CONF_UNIT not in config:
+    if any(key in config for key in UNIT_BINARY) and CONF_UNIT not in config:
         raise cv.Invalid("unit binary sensors require 'unit'")
-    if any(k in config for k in SYSTEM_BINARY) and CONF_UNIT in config:
+    if any(key in config for key in SYSTEM_BINARY) and CONF_UNIT in config:
         raise cv.Invalid("system binary sensors must not have 'unit'")
     return config
 
@@ -26,7 +26,11 @@ CONFIG_SCHEMA = cv.All(
         {
             cv.GenerateID(CONF_DAIKIN_DIII_ID): cv.use_id(DaikinDIII),
             cv.Optional(CONF_UNIT): cv.hex_uint8_t,
-            **{cv.Optional(k): binary_sensor.binary_sensor_schema(device_class=dc) for k, (_, dc) in {**UNIT_BINARY, **SYSTEM_BINARY}.items() if dc},
+            **{
+                cv.Optional(key): binary_sensor.binary_sensor_schema(device_class=device_class)
+                for key, (_, device_class) in {**UNIT_BINARY, **SYSTEM_BINARY}.items()
+                if device_class
+            },
             cv.Optional("defrost"): binary_sensor.binary_sensor_schema(icon="mdi:snowflake-melt"),
         }
     ),
@@ -36,11 +40,11 @@ CONFIG_SCHEMA = cv.All(
 
 async def to_code(config):
     hub = await cg.get_variable(config[CONF_DAIKIN_DIII_ID])
-    for key, (idx, _) in UNIT_BINARY.items():
+    for key, (index, _) in UNIT_BINARY.items():
         if key in config:
-            s = await binary_sensor.new_binary_sensor(config[key])
-            cg.add(hub.set_unit_binary_sensor(config[CONF_UNIT], idx, s))
-    for key, (idx, _) in SYSTEM_BINARY.items():
+            var = await binary_sensor.new_binary_sensor(config[key])
+            cg.add(hub.set_unit_binary_sensor(config[CONF_UNIT], index, var))
+    for key, (index, _) in SYSTEM_BINARY.items():
         if key in config:
-            s = await binary_sensor.new_binary_sensor(config[key])
-            cg.add(hub.set_system_binary_sensor(idx, s))
+            var = await binary_sensor.new_binary_sensor(config[key])
+            cg.add(hub.set_system_binary_sensor(index, var))

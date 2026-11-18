@@ -103,41 +103,43 @@ class DaikinDIII : public Component, public uart::UARTDevice, public DecoderSink
     this->mqtt_suffix_ = topic_suffix;
   }
   void add_unit(uint8_t addr, uint8_t b1_index, uint8_t group, bool hydrobox = false);
-  void set_source_address(uint8_t a) { this->source_address_ = a; }
+  void set_source_address(uint8_t address) { this->source_address_ = address; }
   // Write budget per group (see diii_writer.h); burst 0 disables it.
   void set_write_budget(uint16_t burst, uint32_t refill_ms) { this->writer_.budget().configure(burst, refill_ms); }
-  void set_unit_climate(uint8_t addr, DaikinClimate *c);
-  void set_unit_airflow_select(uint8_t addr, DaikinAirflowSelect *s);
+  void set_unit_climate(uint8_t addr, DaikinClimate *climate);
+  void set_unit_airflow_select(uint8_t addr, DaikinAirflowSelect *airflow_select);
   const Unit *get_unit(uint8_t addr) const;
   // Demand (status bit 0x20) of any unit in the group: 1, 0, or -1 while no
   // unit of the group has sent its status yet. fan_running: any unit's 0x04.
   int group_demand(uint8_t group, bool *fan_running) const;
 
 #ifdef USE_SENSOR
-  void set_unit_sensor(uint8_t addr, uint8_t field, sensor::Sensor *s);
-  void set_unit_diag_sensor(uint8_t addr, uint8_t kind, sensor::Sensor *s);
-  void set_system_sensor(uint8_t field, sensor::Sensor *s) { this->system_sensors_[field] = s; }
-  void set_diag_sensor(uint8_t kind, sensor::Sensor *s) { this->diag_sensors_[kind] = s; }
+  void set_unit_sensor(uint8_t addr, uint8_t field, sensor::Sensor *sensor);
+  void set_unit_diag_sensor(uint8_t addr, uint8_t kind, sensor::Sensor *sensor);
+  void set_system_sensor(uint8_t field, sensor::Sensor *sensor) { this->system_sensors_[field] = sensor; }
+  void set_diag_sensor(uint8_t kind, sensor::Sensor *sensor) { this->diag_sensors_[kind] = sensor; }
 #endif
 #ifdef USE_BINARY_SENSOR
-  void set_unit_binary_sensor(uint8_t addr, uint8_t kind, binary_sensor::BinarySensor *s);
-  void set_system_binary_sensor(uint8_t kind, binary_sensor::BinarySensor *s) { this->system_binary_[kind] = s; }
+  void set_unit_binary_sensor(uint8_t addr, uint8_t kind, binary_sensor::BinarySensor *sensor);
+  void set_system_binary_sensor(uint8_t kind, binary_sensor::BinarySensor *sensor) {
+    this->system_binary_[kind] = sensor;
+  }
 #endif
 #ifdef USE_TEXT_SENSOR
-  void set_unit_text_sensor(uint8_t addr, uint8_t kind, text_sensor::TextSensor *s);
-  void set_system_text_sensor(uint8_t kind, text_sensor::TextSensor *s) { this->system_text_[kind] = s; }
+  void set_unit_text_sensor(uint8_t addr, uint8_t kind, text_sensor::TextSensor *sensor);
+  void set_system_text_sensor(uint8_t kind, text_sensor::TextSensor *sensor) { this->system_text_[kind] = sensor; }
 #endif
 
   // Bus writes (research / control). Refused unless writes are enabled.
-  void set_write_enabled(bool en) { this->writer_.set_enabled(en); }
+  void set_write_enabled(bool enabled) { this->writer_.set_enabled(enabled); }
   // Raw frame stream (MQTT) on/off. A marker line is published at each change.
-  void set_raw_enabled(bool en);
+  void set_raw_enabled(bool enabled);
   bool is_write_enabled() const { return this->writer_.enabled(); }
   // frame without checksum, e.g. "A5300714144003..."; checksum is appended and
   // the frame is queued (min. 1.5 s spacing, retried when the ATmega refuses it
   // or reports a collision). Guards and queue: diii_writer.h.
   bool write_frame_hex(const std::string &hex);
-  bool enqueue_frame(const uint8_t *b, size_t n);
+  bool enqueue_frame(const uint8_t *frame, size_t length);
   // Group commands (to the group master address), see docs/protocol.md.
   // A unit added as hydrobox gets the long frame; a setpoint for it is refused.
   bool command_power(uint8_t group, bool on);
@@ -164,19 +166,19 @@ class DaikinDIII : public Component, public uart::UARTDevice, public DecoderSink
     this->isp_window_ms_ = window_ms;
   }
   // Opens/closes the programming port. It closes by itself after the window.
-  void set_isp_enabled(bool en);
+  void set_isp_enabled(bool enabled);
   bool is_isp_enabled() const { return this->isp_server_ != nullptr; }
   // called with false when the port closes by itself (window over)
-  void set_isp_state_callback(std::function<void(bool)> &&cb) { this->isp_state_cb_ = std::move(cb); }
+  void set_isp_state_callback(std::function<void(bool)> &&callback) { this->isp_state_cb_ = std::move(callback); }
 #endif
 
   // DecoderSink
-  void on_unit_value(uint8_t addr, UnitField f, float v) override;
+  void on_unit_value(uint8_t addr, UnitField field, float value) override;
   void on_unit_power(uint8_t addr, bool on) override;
   void on_unit_mode(uint8_t addr, uint8_t mode) override;
   void on_unit_fan(uint8_t addr, uint8_t speed) override;
   void on_unit_status(uint8_t addr, uint8_t bits) override;
-  void on_system_value(SystemField f, float v) override;
+  void on_system_value(SystemField field, float value) override;
   void on_compressor(uint8_t state) override;
   void on_clock(uint8_t hour, uint8_t minute) override;
   void on_unit_role(uint8_t addr, bool master) override;
@@ -187,15 +189,15 @@ class DaikinDIII : public Component, public uart::UARTDevice, public DecoderSink
   Unit *find_unit_(uint8_t addr);
   void handle_line_(const char *line);
   void publish_raw_(char kind, const char *payload);
-  void set_last_write_(const std::string &s);
-  bool command_op_(uint8_t group, uint8_t pp, uint8_t mm, uint8_t xx, uint8_t sp);
-  bool check_enqueue_(::diii::WriteResult r, bool setting);
+  void set_last_write_(const std::string &text);
+  bool command_op_(uint8_t group, uint8_t power_byte, uint8_t mode_byte, uint8_t mode_detail, uint8_t setpoint);
+  bool check_enqueue_(::diii::WriteResult result, bool setting);
   void load_budget_();
   void save_budget_();
   ESPPreferenceObject budget_pref_;
   void process_queue_();
-  void notify_climate_(Unit *u);
-  void notify_airflow_(Unit *u);
+  void notify_climate_(Unit *unit);
+  void notify_airflow_(Unit *unit);
 
   uint8_t source_address_{0x30};
   ::diii::WriteQueue writer_;

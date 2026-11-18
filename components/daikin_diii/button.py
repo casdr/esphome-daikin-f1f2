@@ -25,5 +25,5 @@ async def to_code(config):
     hub = await cg.get_variable(config[CONF_DAIKIN_DIII_ID])
     cg.add_global(cg.RawStatement('#include "esphome/components/daikin_diii/controls.h"'))
     if "reset_atmega" in config:
-        b = await button.new_button(config["reset_atmega"])
-        await cg.register_parented(b, hub)
+        var = await button.new_button(config["reset_atmega"])
+        await cg.register_parented(var, hub)

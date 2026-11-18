@@ -45,7 +45,7 @@ def _final_validate(config):
         return config
     hubs = fv.full_config.get().get("daikin_diii", [])
     hubs = hubs if isinstance(hubs, list) else [hubs]
-    if not any("isp" in h for h in hubs):
+    if not any("isp" in hub_config for hub_config in hubs):
         raise cv.Invalid("atmega_programming needs an `isp:` block on daikin_diii", path=["atmega_programming"])
     return config
 
@@ -57,14 +57,14 @@ async def to_code(config):
     hub = await cg.get_variable(config[CONF_DAIKIN_DIII_ID])
     cg.add_global(cg.RawStatement('#include "esphome/components/daikin_diii/controls.h"'))
     if "write_enable" in config:
-        s = await switch.new_switch(config["write_enable"])
-        await cg.register_component(s, config["write_enable"])
-        await cg.register_parented(s, hub)
+        write_enable_switch = await switch.new_switch(config["write_enable"])
+        await cg.register_component(write_enable_switch, config["write_enable"])
+        await cg.register_parented(write_enable_switch, hub)
     if "raw_logging" in config:
-        r = await switch.new_switch(config["raw_logging"])
-        await cg.register_component(r, config["raw_logging"])
-        await cg.register_parented(r, hub)
+        raw_logging_switch = await switch.new_switch(config["raw_logging"])
+        await cg.register_component(raw_logging_switch, config["raw_logging"])
+        await cg.register_parented(raw_logging_switch, hub)
     if "atmega_programming" in config:
-        p = await switch.new_switch(config["atmega_programming"])
-        await cg.register_component(p, config["atmega_programming"])
-        await cg.register_parented(p, hub)
+        programming_switch = await switch.new_switch(config["atmega_programming"])
+        await cg.register_component(programming_switch, config["atmega_programming"])
+        await cg.register_parented(programming_switch, hub)

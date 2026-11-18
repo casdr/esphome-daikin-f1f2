@@ -26,22 +26,22 @@ struct Sink : DecoderSink {
   float sys[(int) SystemField::COUNT];
   bool sys_has[(int) SystemField::COUNT] = {};
   int compressor = -1, hh = -1, mm = -1;
-  void on_unit_value(uint8_t a, UnitField f, float v) override {
-    units[a].v[(int) f] = v;
-    units[a].has[(int) f] = true;
+  void on_unit_value(uint8_t addr, UnitField field, float value) override {
+    units[addr].v[(int) field] = value;
+    units[addr].has[(int) field] = true;
   }
-  void on_unit_power(uint8_t a, bool on) override { units[a].power = on; }
-  void on_unit_mode(uint8_t a, uint8_t m) override { units[a].mode = m; }
-  void on_unit_fan(uint8_t a, uint8_t s) override { units[a].fan = s; }
-  void on_unit_airflow(uint8_t a, uint8_t d) override { units[a].airflow = d; }
-  void on_unit_status(uint8_t a, uint8_t s) override { units[a].status = s; }
-  void on_system_value(SystemField f, float v) override {
-    sys[(int) f] = v;
-    sys_has[(int) f] = true;
+  void on_unit_power(uint8_t addr, bool on) override { units[addr].power = on; }
+  void on_unit_mode(uint8_t addr, uint8_t mode) override { units[addr].mode = mode; }
+  void on_unit_fan(uint8_t addr, uint8_t speed) override { units[addr].fan = speed; }
+  void on_unit_airflow(uint8_t addr, uint8_t direction) override { units[addr].airflow = direction; }
+  void on_unit_status(uint8_t addr, uint8_t bits) override { units[addr].status = bits; }
+  void on_system_value(SystemField field, float value) override {
+    sys[(int) field] = value;
+    sys_has[(int) field] = true;
   }
-  void on_compressor(uint8_t s) override { compressor = s; }
-  void on_clock(uint8_t h, uint8_t m) override { hh = h, mm = m; }
-  void on_unit_role(uint8_t a, bool master) override { units[a].master = master; }
+  void on_compressor(uint8_t state) override { compressor = state; }
+  void on_clock(uint8_t hour, uint8_t minute) override { hh = hour, mm = minute; }
+  void on_unit_role(uint8_t addr, bool master) override { units[addr].master = master; }
   void on_defrost(bool active) override { defrost = active; }
   int defrost = -1;
 };
@@ -49,54 +49,54 @@ struct Sink : DecoderSink {
 int main(int argc, char **argv) {
   uint8_t b1map[256];
   memset(b1map, 0xFF, sizeof(b1map));
-  for (auto &p : B1_MAP) b1map[p[0]] = p[1];
+  for (auto &pair : B1_MAP) b1map[pair[0]] = pair[1];
   Sink sink;
   long frames = 0, valid = 0;
   for (int i = 1; i < argc; i++) {
-    FILE *f = fopen(argv[i], "r");
-    if (!f) continue;
+    FILE *file = fopen(argv[i], "r");
+    if (!file) continue;
     char line[512];
-    while (fgets(line, sizeof line, f)) {
+    while (fgets(line, sizeof line, file)) {
       // TSV: time \t gap \t hex [\t # note]  -> rebuild "R T gap: hex"
-      char *t1 = strchr(line, '\t');
-      if (!t1) continue;
-      char *t2 = strchr(t1 + 1, '\t');
-      if (!t2) continue;
-      char *hex = t2 + 1;
+      char *tab1 = strchr(line, '\t');
+      if (!tab1) continue;
+      char *tab2 = strchr(tab1 + 1, '\t');
+      if (!tab2) continue;
+      char *hex = tab2 + 1;
       if (*hex == '#' || *hex == '\t' || *hex == '\n') continue;
       char *end = hex;
       while (hexval(*end) >= 0) end++;
       *end = 0;
-      *t2 = 0;
-      char rl[400];
-      snprintf(rl, sizeof rl, "R T %s: %s", t1 + 1, hex);
-      uint8_t buf[MAX_FRAME];
-      size_t n = parse_raw_line(rl, buf, sizeof buf, nullptr);
-      if (n < 2) continue;
+      *tab2 = 0;
+      char raw_line[400];
+      snprintf(raw_line, sizeof raw_line, "R T %s: %s", tab1 + 1, hex);
+      uint8_t frame[MAX_FRAME];
+      size_t length = parse_raw_line(raw_line, frame, sizeof frame, nullptr);
+      if (length < 2) continue;
       frames++;
-      if (frame_valid(buf, n)) valid++;
-      decode_frame(buf, n, b1map, sink);
+      if (frame_valid(frame, length)) valid++;
+      decode_frame(frame, length, b1map, sink);
     }
-    fclose(f);
+    fclose(file);
   }
   const char *names[] = {"room", "intake", "remote", "pipe_a", "pipe_b", "setpoint", "demand_step"};
-  for (auto &kv : sink.units) {
-    printf("unit %02X", kv.first);
-    for (int f = 0; f < (int) UnitField::COUNT; f++)
-      if (kv.second.has[f]) printf(" %s=%.2f", names[f], kv.second.v[f]);
-    if (kv.second.power >= 0) printf(" power=%d", kv.second.power);
-    if (kv.second.mode >= 0) printf(" mode=%02X", kv.second.mode);
-    if (kv.second.fan >= 0) printf(" fan=%d", kv.second.fan);
-    if (kv.second.airflow >= 0) printf(" airflow=%d", kv.second.airflow);
-    if (kv.second.status >= 0) printf(" status=%02X", kv.second.status);
-    if (kv.second.master >= 0) printf(" master=%d", kv.second.master);
+  for (auto &entry : sink.units) {
+    printf("unit %02X", entry.first);
+    for (int field = 0; field < (int) UnitField::COUNT; field++)
+      if (entry.second.has[field]) printf(" %s=%.2f", names[field], entry.second.v[field]);
+    if (entry.second.power >= 0) printf(" power=%d", entry.second.power);
+    if (entry.second.mode >= 0) printf(" mode=%02X", entry.second.mode);
+    if (entry.second.fan >= 0) printf(" fan=%d", entry.second.fan);
+    if (entry.second.airflow >= 0) printf(" airflow=%d", entry.second.airflow);
+    if (entry.second.status >= 0) printf(" status=%02X", entry.second.status);
+    if (entry.second.master >= 0) printf(" master=%d", entry.second.master);
     printf("\n");
   }
-  const char *sn[] = {"outdoor", "t_evap", "t_cond", "discharge_1", "discharge_2", "capacity", "comp_step_1",
-                      "comp_step_2", "fan_step_1", "fan_step_2", "comp_freq_1", "comp_freq_2"};
+  const char *system_names[] = {"outdoor", "t_evap", "t_cond", "discharge_1", "discharge_2", "capacity",
+                                "comp_step_1", "comp_step_2", "fan_step_1", "fan_step_2", "comp_freq_1", "comp_freq_2"};
   printf("system");
-  for (int f = 0; f < (int) SystemField::COUNT; f++)
-    if (sink.sys_has[f]) printf(" %s=%.2f", sn[f], sink.sys[f]);
+  for (int field = 0; field < (int) SystemField::COUNT; field++)
+    if (sink.sys_has[field]) printf(" %s=%.2f", system_names[field], sink.sys[field]);
   printf(" compressor=%d clock=%02d:%02d", sink.compressor, sink.hh, sink.mm);
   if (sink.defrost >= 0) printf(" defrost=%d", sink.defrost);
   printf("\n");

@@ -54,8 +54,11 @@ TEMP_SCHEMA = sensor.sensor_schema(
 )
 
 
-RAW_SCHEMA = {k: sensor.sensor_schema(icon=icon, accuracy_decimals=0, state_class=STATE_CLASS_MEASUREMENT,
-                                      entity_category=ENTITY_CATEGORY_DIAGNOSTIC) for k, (_, _, icon) in SYSTEM_RAW.items()}
+RAW_SCHEMA = {
+    key: sensor.sensor_schema(icon=icon, accuracy_decimals=0, state_class=STATE_CLASS_MEASUREMENT,
+                              entity_category=ENTITY_CATEGORY_DIAGNOSTIC)
+    for key, (_, _, icon) in SYSTEM_RAW.items()
+}
 DIAG_SCHEMA = {
     "frames_ok": sensor.sensor_schema(icon="mdi:counter", accuracy_decimals=0, state_class=STATE_CLASS_TOTAL_INCREASING,
                                       entity_category=ENTITY_CATEGORY_DIAGNOSTIC),
@@ -96,10 +99,10 @@ CONFIG_SCHEMA = cv.All(
         {
             cv.GenerateID(CONF_DAIKIN_DIII_ID): cv.use_id(DaikinDIII),
             cv.Optional(CONF_UNIT): cv.hex_uint8_t,
-            **{cv.Optional(k): TEMP_SCHEMA for k in list(UNIT_SENSORS) + list(SYSTEM_SENSORS)},
-            **{cv.Optional(k): v for k, v in RAW_SCHEMA.items()},
-            **{cv.Optional(k): v for k, v in DIAG_SCHEMA.items()},
-            **{cv.Optional(k): v for k, v in UNIT_DIAG_SCHEMA.items()},
+            **{cv.Optional(key): TEMP_SCHEMA for key in list(UNIT_SENSORS) + list(SYSTEM_SENSORS)},
+            **{cv.Optional(key): schema for key, schema in RAW_SCHEMA.items()},
+            **{cv.Optional(key): schema for key, schema in DIAG_SCHEMA.items()},
+            **{cv.Optional(key): schema for key, schema in UNIT_DIAG_SCHEMA.items()},
             # hydrobox F5 22B @9: 0 without heat demand, 1-15 with (hyp: requested capacity step)
             cv.Optional("demand_step"): sensor.sensor_schema(icon="mdi:stairs-up", accuracy_decimals=0,
                                                              state_class=STATE_CLASS_MEASUREMENT),
@@ -111,27 +114,27 @@ CONFIG_SCHEMA = cv.All(
 
 async def to_code(config):
     hub = await cg.get_variable(config[CONF_DAIKIN_DIII_ID])
-    for key, idx in UNIT_SENSORS.items():
+    for key, index in UNIT_SENSORS.items():
         if key in config:
-            s = await sensor.new_sensor(config[key])
-            cg.add(hub.set_unit_sensor(config[CONF_UNIT], idx, s))
-    for key, idx in UNIT_RAW.items():
+            var = await sensor.new_sensor(config[key])
+            cg.add(hub.set_unit_sensor(config[CONF_UNIT], index, var))
+    for key, index in UNIT_RAW.items():
         if key in config:
-            s = await sensor.new_sensor(config[key])
-            cg.add(hub.set_unit_sensor(config[CONF_UNIT], idx, s))
-    for key, idx in UNIT_DIAG.items():
+            var = await sensor.new_sensor(config[key])
+            cg.add(hub.set_unit_sensor(config[CONF_UNIT], index, var))
+    for key, index in UNIT_DIAG.items():
         if key in config:
-            s = await sensor.new_sensor(config[key])
-            cg.add(hub.set_unit_diag_sensor(config[CONF_UNIT], idx, s))
-    for key, idx in SYSTEM_SENSORS.items():
+            var = await sensor.new_sensor(config[key])
+            cg.add(hub.set_unit_diag_sensor(config[CONF_UNIT], index, var))
+    for key, index in SYSTEM_SENSORS.items():
         if key in config:
-            s = await sensor.new_sensor(config[key])
-            cg.add(hub.set_system_sensor(idx, s))
-    for key, (idx, _, _) in SYSTEM_RAW.items():
+            var = await sensor.new_sensor(config[key])
+            cg.add(hub.set_system_sensor(index, var))
+    for key, (index, _, _) in SYSTEM_RAW.items():
         if key in config:
-            s = await sensor.new_sensor(config[key])
-            cg.add(hub.set_system_sensor(idx, s))
-    for key, idx in DIAG.items():
+            var = await sensor.new_sensor(config[key])
+            cg.add(hub.set_system_sensor(index, var))
+    for key, index in DIAG.items():
         if key in config:
-            s = await sensor.new_sensor(config[key])
-            cg.add(hub.set_diag_sensor(idx, s))
+            var = await sensor.new_sensor(config[key])
+            cg.add(hub.set_diag_sensor(index, var))

@@ -20,45 +20,45 @@ static const char *const TAG = "daikin_diii";
 static const char *const MAGIC = "1P2P";
 
 void DaikinDIII::add_unit(uint8_t addr, uint8_t b1_index, uint8_t group, bool hydrobox) {
-  Unit u{};
-  u.addr = addr;
-  u.group = group;
-  u.hydrobox = hydrobox;
+  Unit unit{};
+  unit.addr = addr;
+  unit.group = group;
+  unit.hydrobox = hydrobox;
   // Without a B1 index no B1 frame will tell whether the group has a remote,
   // so the climate uses the return-air temperature right away.
-  if (b1_index == 0xFF) u.remote_known = true;
-  this->units_.push_back(u);
+  if (b1_index == 0xFF) unit.remote_known = true;
+  this->units_.push_back(unit);
   if (b1_index != 0xFF) this->b1_to_diii_[b1_index] = addr;
 }
 
 Unit *DaikinDIII::find_unit_(uint8_t addr) {
-  for (auto &u : this->units_)
-    if (u.addr == addr) return &u;
+  for (auto &unit : this->units_)
+    if (unit.addr == addr) return &unit;
   return nullptr;
 }
 
 #ifdef USE_SENSOR
-void DaikinDIII::set_unit_sensor(uint8_t addr, uint8_t field, sensor::Sensor *s) {
-  Unit *u = this->find_unit_(addr);
-  if (u != nullptr && field < (uint8_t) UnitField::COUNT) u->sensors[field] = s;
+void DaikinDIII::set_unit_sensor(uint8_t addr, uint8_t field, sensor::Sensor *sensor) {
+  Unit *unit = this->find_unit_(addr);
+  if (unit != nullptr && field < (uint8_t) UnitField::COUNT) unit->sensors[field] = sensor;
 }
 #endif
 #ifdef USE_SENSOR
-void DaikinDIII::set_unit_diag_sensor(uint8_t addr, uint8_t kind, sensor::Sensor *s) {
-  Unit *u = this->find_unit_(addr);
-  if (u != nullptr && kind < (uint8_t) UnitDiag::COUNT) u->diag[kind] = s;
+void DaikinDIII::set_unit_diag_sensor(uint8_t addr, uint8_t kind, sensor::Sensor *sensor) {
+  Unit *unit = this->find_unit_(addr);
+  if (unit != nullptr && kind < (uint8_t) UnitDiag::COUNT) unit->diag[kind] = sensor;
 }
 #endif
 #ifdef USE_BINARY_SENSOR
-void DaikinDIII::set_unit_binary_sensor(uint8_t addr, uint8_t kind, binary_sensor::BinarySensor *s) {
-  Unit *u = this->find_unit_(addr);
-  if (u != nullptr && kind < (uint8_t) UnitBinary::COUNT) u->binary[kind] = s;
+void DaikinDIII::set_unit_binary_sensor(uint8_t addr, uint8_t kind, binary_sensor::BinarySensor *sensor) {
+  Unit *unit = this->find_unit_(addr);
+  if (unit != nullptr && kind < (uint8_t) UnitBinary::COUNT) unit->binary[kind] = sensor;
 }
 #endif
 #ifdef USE_TEXT_SENSOR
-void DaikinDIII::set_unit_text_sensor(uint8_t addr, uint8_t kind, text_sensor::TextSensor *s) {
-  Unit *u = this->find_unit_(addr);
-  if (u != nullptr && kind < (uint8_t) UnitText::COUNT) u->text[kind] = s;
+void DaikinDIII::set_unit_text_sensor(uint8_t addr, uint8_t kind, text_sensor::TextSensor *sensor) {
+  Unit *unit = this->find_unit_(addr);
+  if (unit != nullptr && kind < (uint8_t) UnitText::COUNT) unit->text[kind] = sensor;
 }
 #endif
 
@@ -74,21 +74,21 @@ struct BudgetSave {
 
 void DaikinDIII::load_budget_() {
   this->budget_pref_ = global_preferences->make_preference<BudgetSave>(fnv1_hash("daikin_diii_budget"), false);
-  BudgetSave s{};
-  if (!this->budget_pref_.load(&s) || s.n > 16) return;
+  BudgetSave saved{};
+  if (!this->budget_pref_.load(&saved) || saved.n > 16) return;
   uint32_t now = millis();
-  for (uint8_t i = 0; i < s.n; i++) this->writer_.budget().restore(s.dst[i], s.tokens[i], now);
-  ESP_LOGI(TAG, "Write budget restored for %u group(s)", s.n);
+  for (uint8_t i = 0; i < saved.n; i++) this->writer_.budget().restore(saved.dst[i], saved.tokens[i], now);
+  ESP_LOGI(TAG, "Write budget restored for %u group(s)", saved.n);
 }
 
 void DaikinDIII::save_budget_() {
-  auto &b = this->writer_.budget();
-  BudgetSave s{};
-  for (size_t i = 0; i < b.size() && s.n < 16; i++, s.n++) {
-    s.dst[s.n] = b.dst_at(i);
-    s.tokens[s.n] = b.tokens_at(i);
+  auto &budget = this->writer_.budget();
+  BudgetSave saved{};
+  for (size_t i = 0; i < budget.size() && saved.n < 16; i++, saved.n++) {
+    saved.dst[saved.n] = budget.dst_at(i);
+    saved.tokens[saved.n] = budget.tokens_at(i);
   }
-  this->budget_pref_.save(&s);
+  this->budget_pref_.save(&saved);
 }
 
 void DaikinDIII::setup() {
@@ -168,13 +168,13 @@ bool DaikinDIII::send_atmega_command(const std::string &cmd) {
   return true;
 }
 
-bool DaikinDIII::check_enqueue_(::diii::WriteResult r, bool setting) {
-  if (r == ::diii::WriteResult::OK) {
+bool DaikinDIII::check_enqueue_(::diii::WriteResult result, bool setting) {
+  if (result == ::diii::WriteResult::OK) {
     ESP_LOGD(TAG, "Queued bus write (queue %u)", (unsigned) this->writer_.size());
     if (setting && this->writer_.budget().enabled()) this->save_budget_();
     return true;
   }
-  const char *why = ::diii::write_result_str(r);
+  const char *why = ::diii::write_result_str(result);
   this->note_write_refused(why);
   ESP_LOGW(TAG, "Write refused: %s", why);
   return false;
@@ -185,8 +185,9 @@ bool DaikinDIII::write_frame_hex(const std::string &hex) {
   return this->check_enqueue_(this->writer_.enqueue_hex(hex, millis()), setting);
 }
 
-bool DaikinDIII::enqueue_frame(const uint8_t *b, size_t n) {
-  return this->check_enqueue_(this->writer_.enqueue(b, n, millis()), ::diii::is_setting_command(b, n));
+bool DaikinDIII::enqueue_frame(const uint8_t *frame, size_t length) {
+  return this->check_enqueue_(this->writer_.enqueue(frame, length, millis()),
+                              ::diii::is_setting_command(frame, length));
 }
 
 void DaikinDIII::process_queue_() {
@@ -214,17 +215,19 @@ void DaikinDIII::process_queue_() {
   this->set_last_write_(std::string("sent ") + frame);
 }
 
-bool DaikinDIII::command_op_(uint8_t group, uint8_t pp, uint8_t mm, uint8_t xx, uint8_t sp) {
+bool DaikinDIII::command_op_(uint8_t group, uint8_t power_byte, uint8_t mode_byte, uint8_t mode_detail,
+                             uint8_t setpoint) {
   // the hydrobox takes the same command in a longer frame (diii_writer.h)
-  const Unit *u = this->get_unit(group);
-  const bool hydrobox = u != nullptr && u->hydrobox;
-  if (hydrobox && sp != 0) {
+  const Unit *unit = this->get_unit(group);
+  const bool hydrobox = unit != nullptr && unit->hydrobox;
+  if (hydrobox && setpoint != 0) {
     this->note_write_refused("hydrobox setpoint unknown");
     return false;
   }
-  uint8_t f[::diii::HYDROBOX_OPERATION_LEN];
-  size_t n = ::diii::build_operation(f, this->source_address_, group, hydrobox, pp, mm, xx, sp);
-  return this->enqueue_frame(f, n);
+  uint8_t frame[::diii::HYDROBOX_OPERATION_LEN];
+  size_t length = ::diii::build_operation(frame, this->source_address_, group, hydrobox, power_byte, mode_byte,
+                                          mode_detail, setpoint);
+  return this->enqueue_frame(frame, length);
 }
 
 bool DaikinDIII::command_power(uint8_t group, bool on) { return this->command_op_(group, on ? 0x03 : 0x02, 0, 0, 0); }
@@ -241,55 +244,55 @@ bool DaikinDIII::command_setpoint(uint8_t group, uint8_t celsius) {
 }
 
 bool DaikinDIII::command_fan(uint8_t group, uint8_t speed) {
-  uint8_t f[::diii::FAN_AIRFLOW_LEN];
-  if (!::diii::build_fan_airflow(f, this->source_address_, group, speed, -1)) return false;
-  return this->enqueue_frame(f, sizeof(f));
+  uint8_t frame[::diii::FAN_AIRFLOW_LEN];
+  if (!::diii::build_fan_airflow(frame, this->source_address_, group, speed, -1)) return false;
+  return this->enqueue_frame(frame, sizeof(frame));
 }
 
 bool DaikinDIII::command_airflow(uint8_t group, uint8_t direction) {
-  uint8_t f[::diii::FAN_AIRFLOW_LEN];
-  if (!::diii::build_fan_airflow(f, this->source_address_, group, -1, direction)) {
+  uint8_t frame[::diii::FAN_AIRFLOW_LEN];
+  if (!::diii::build_fan_airflow(frame, this->source_address_, group, -1, direction)) {
     this->note_write_refused("unknown airflow direction");
     return false;
   }
-  return this->enqueue_frame(f, sizeof(f));
+  return this->enqueue_frame(frame, sizeof(frame));
 }
 
 bool DaikinDIII::command_outlet_pair(uint8_t unit, ::diii::OutletPair pair, bool fixed) {
-  uint8_t f[::diii::FAN_AIRFLOW_LEN];
-  ::diii::build_outlet_pair(f, this->source_address_, unit, pair, fixed);
-  return this->enqueue_frame(f, sizeof(f));
+  uint8_t frame[::diii::FAN_AIRFLOW_LEN];
+  ::diii::build_outlet_pair(frame, this->source_address_, unit, pair, fixed);
+  return this->enqueue_frame(frame, sizeof(frame));
 }
 
-void DaikinDIII::set_unit_airflow_select(uint8_t addr, DaikinAirflowSelect *s) {
-  Unit *u = this->find_unit_(addr);
-  if (u != nullptr) u->airflow_select = s;
+void DaikinDIII::set_unit_airflow_select(uint8_t addr, DaikinAirflowSelect *airflow_select) {
+  Unit *unit = this->find_unit_(addr);
+  if (unit != nullptr) unit->airflow_select = airflow_select;
 }
 
-void DaikinDIII::set_unit_climate(uint8_t addr, DaikinClimate *c) {
-  Unit *u = this->find_unit_(addr);
-  if (u != nullptr) u->climate = c;
+void DaikinDIII::set_unit_climate(uint8_t addr, DaikinClimate *climate) {
+  Unit *unit = this->find_unit_(addr);
+  if (unit != nullptr) unit->climate = climate;
 }
 
 const Unit *DaikinDIII::get_unit(uint8_t addr) const {
-  for (auto &u : this->units_)
-    if (u.addr == addr) return &u;
+  for (auto &unit : this->units_)
+    if (unit.addr == addr) return &unit;
   return nullptr;
 }
 
-void DaikinDIII::set_last_write_(const std::string &s) {
+void DaikinDIII::set_last_write_(const std::string &text) {
 #ifdef USE_TEXT_SENSOR
-  auto *t = this->system_text_[(int) SystemText::LAST_WRITE];
-  if (t != nullptr) t->publish_state(s);
+  auto *sensor = this->system_text_[(int) SystemText::LAST_WRITE];
+  if (sensor != nullptr) sensor->publish_state(text);
 #endif
 }
 
-void DaikinDIII::set_raw_enabled(bool en) {
-  if (en == this->raw_enabled_) return;
-  if (!en) this->publish_raw_('E', "E NOTE: raw logging disabled by switch");
-  this->raw_enabled_ = en;
-  if (en) this->publish_raw_('E', "E NOTE: raw logging enabled by switch");
-  ESP_LOGI(TAG, "Raw logging %s", en ? "enabled" : "disabled");
+void DaikinDIII::set_raw_enabled(bool enabled) {
+  if (enabled == this->raw_enabled_) return;
+  if (!enabled) this->publish_raw_('E', "E NOTE: raw logging disabled by switch");
+  this->raw_enabled_ = enabled;
+  if (enabled) this->publish_raw_('E', "E NOTE: raw logging enabled by switch");
+  ESP_LOGI(TAG, "Raw logging %s", enabled ? "enabled" : "disabled");
 }
 
 void DaikinDIII::publish_raw_(char kind, const char *payload) {
@@ -331,8 +334,8 @@ void DaikinDIII::loop() {
     // The ATmega is held in reset: no bus traffic, no writes. Drop whatever
     // the UART still holds; the link restarts after programming.
     while (this->available()) {
-      uint8_t c;
-      if (!this->read_byte(&c)) break;
+      uint8_t discarded;
+      if (!this->read_byte(&discarded)) break;
     }
     return;
   }
@@ -351,11 +354,11 @@ void DaikinDIII::loop() {
   // Bounded work per loop iteration to keep the ESP8266 responsive.
   int budget = 512;
   while (budget-- > 0 && this->available()) {
-    uint8_t c;
-    if (!this->read_byte(&c)) break;
-    if (c == '\r') continue;
-    if (c != '\n') {
-      if (this->line_len_ < sizeof(this->line_buf_) - 1) this->line_buf_[this->line_len_++] = (char) c;
+    uint8_t received;
+    if (!this->read_byte(&received)) break;
+    if (received == '\r') continue;
+    if (received != '\n') {
+      if (this->line_len_ < sizeof(this->line_buf_) - 1) this->line_buf_[this->line_len_++] = (char) received;
       continue;
     }
     this->line_buf_[this->line_len_] = 0;
@@ -373,29 +376,29 @@ void DaikinDIII::loop() {
 void DaikinDIII::handle_line_(const char *line) {
   switch (line[0]) {
     case 'R': {
-      uint8_t buf[::diii::MAX_FRAME];
-      size_t n = ::diii::parse_raw_line(line, buf, sizeof(buf), nullptr);
-      if (n == 0) return;
+      uint8_t frame[::diii::MAX_FRAME];
+      size_t length = ::diii::parse_raw_line(line, frame, sizeof(frame), nullptr);
+      if (length == 0) return;
       this->publish_raw_('R', line);
-      if (n == 1) return;  // ACK (06) etc.
-      if (::diii::frame_valid(buf, n)) {
+      if (length == 1) return;  // ACK (06) etc.
+      if (::diii::frame_valid(frame, length)) {
         this->frames_ok_++;
         // our own frame read back from the bus: only now is it written
-        if (buf[0] == 0xA5 && this->writer_.on_bus_frame(buf, n)) {
+        if (frame[0] == 0xA5 && this->writer_.on_bus_frame(frame, length)) {
           std::string hex;
-          char b2[3];
-          for (size_t i = 0; i < n; i++) {
-            snprintf(b2, sizeof(b2), "%02X", buf[i]);
-            hex += b2;
+          char hex_byte[3];
+          for (size_t i = 0; i < length; i++) {
+            snprintf(hex_byte, sizeof(hex_byte), "%02X", frame[i]);
+            hex += hex_byte;
           }
           ESP_LOGD(TAG, "Bus write confirmed: %s", hex.c_str());
           this->set_last_write_(std::string("on bus ") + hex);
         }
-        if (::diii::is_setting_command(buf, n)) {  // from the iTM, a remote or us
-          Unit *u = this->find_unit_(buf[2]);
-          if (u != nullptr) u->commands++;
+        if (::diii::is_setting_command(frame, length)) {  // from the iTM, a remote or us
+          Unit *unit = this->find_unit_(frame[2]);
+          if (unit != nullptr) unit->commands++;
         }
-        ::diii::decode_frame(buf, n, this->b1_to_diii_, *this);
+        ::diii::decode_frame(frame, length, this->b1_to_diii_, *this);
       } else {
         this->frames_err_++;
         ESP_LOGV(TAG, "Invalid frame: %s", line);
@@ -427,71 +430,71 @@ void DaikinDIII::handle_line_(const char *line) {
   }
 }
 
-void DaikinDIII::notify_climate_(Unit *u) {
+void DaikinDIII::notify_climate_(Unit *unit) {
 #ifdef USE_CLIMATE
-  if (u->climate != nullptr) u->climate->update_from_unit(*u);
+  if (unit->climate != nullptr) unit->climate->update_from_unit(*unit);
 #endif
 }
 
-void DaikinDIII::notify_airflow_(Unit *u) {
+void DaikinDIII::notify_airflow_(Unit *unit) {
 #ifdef USE_SELECT
-  if (u->airflow_select != nullptr) u->airflow_select->update_from_unit(*u);
+  if (unit->airflow_select != nullptr) unit->airflow_select->update_from_unit(*unit);
 #endif
 }
 
 void DaikinDIII::on_unit_airflow(uint8_t addr, uint8_t direction) {
-  Unit *u = this->find_unit_(addr);
-  if (u == nullptr) return;
-  u->airflow = (int8_t) direction;
+  Unit *unit = this->find_unit_(addr);
+  if (unit == nullptr) return;
+  unit->airflow = (int8_t) direction;
   // on every report (~1/min): a command the unit did not
   // apply leaves the bus value as it was, and the select must fall back to it
   // once PendingSetting's window has passed (update_from_unit only publishes
   // when the shown option differs, so this sends nothing)
-  this->notify_airflow_(u);
+  this->notify_airflow_(unit);
 }
 
 // ---- DecoderSink ----
 
-void DaikinDIII::on_unit_value(uint8_t addr, UnitField f, float v) {
-  Unit *u = this->find_unit_(addr);
-  if (u == nullptr) return;
-  if (f == UnitField::SETPOINT && u->setpoint != v) {
-    u->setpoint = v;
-    this->notify_climate_(u);
-  } else if (f == UnitField::ROOM && u->room != v) {
-    u->room = v;
-    this->notify_climate_(u);
-  } else if (f == UnitField::REMOTE) {
+void DaikinDIII::on_unit_value(uint8_t addr, UnitField field, float value) {
+  Unit *unit = this->find_unit_(addr);
+  if (unit == nullptr) return;
+  if (field == UnitField::SETPOINT && unit->setpoint != value) {
+    unit->setpoint = value;
+    this->notify_climate_(unit);
+  } else if (field == UnitField::ROOM && unit->room != value) {
+    unit->room = value;
+    this->notify_climate_(unit);
+  } else if (field == UnitField::REMOTE) {
     // 0x1610 (22.0625) is reported by units without their own remote: ignore it
-    float r = (v == 22.0625f) ? NAN : v;
-    bool first = !u->remote_known;
-    u->remote_known = true;
-    if (first || (!(r == u->remote) && !(std::isnan(r) && std::isnan(u->remote)))) {
-      u->remote = r;
-      this->notify_climate_(u);
+    float remote = (value == 22.0625f) ? NAN : value;
+    bool first = !unit->remote_known;
+    unit->remote_known = true;
+    if (first || (!(remote == unit->remote) && !(std::isnan(remote) && std::isnan(unit->remote)))) {
+      unit->remote = remote;
+      this->notify_climate_(unit);
     }
   }
 #ifdef USE_SENSOR
-  auto *s = u->sensors[(int) f];
-  if (s != nullptr && (!s->has_state() || s->get_raw_state() != v)) s->publish_state(v);
+  auto *sensor = unit->sensors[(int) field];
+  if (sensor != nullptr && (!sensor->has_state() || sensor->get_raw_state() != value)) sensor->publish_state(value);
 #endif
 }
 
 void DaikinDIII::on_unit_power(uint8_t addr, bool on) {
-  Unit *u = this->find_unit_(addr);
-  if (u == nullptr) return;
-  if (u->power != (on ? 1 : 0)) {
-    u->power = on ? 1 : 0;
-    this->notify_climate_(u);
+  Unit *unit = this->find_unit_(addr);
+  if (unit == nullptr) return;
+  if (unit->power != (on ? 1 : 0)) {
+    unit->power = on ? 1 : 0;
+    this->notify_climate_(unit);
   }
 #ifdef USE_BINARY_SENSOR
-  auto *s = u->binary[(int) UnitBinary::POWER];
-  if (s != nullptr) s->publish_state(on);
+  auto *sensor = unit->binary[(int) UnitBinary::POWER];
+  if (sensor != nullptr) sensor->publish_state(on);
 #endif
 }
 
-static const char *mode_name(uint8_t m) {
-  switch (m) {
+static const char *mode_name(uint8_t mode) {
+  switch (mode) {
     case 0x60: return "fan_only";
     case 0x61: return "heat";
     case 0x62: return "cool";
@@ -501,8 +504,8 @@ static const char *mode_name(uint8_t m) {
   }
 }
 
-static const char *fan_name(uint8_t s) {
-  switch (s) {
+static const char *fan_name(uint8_t speed) {
+  switch (speed) {
     case 0: return "auto";
     case 1: return "low";
     case 3: return "medium";
@@ -512,52 +515,52 @@ static const char *fan_name(uint8_t s) {
 }
 
 void DaikinDIII::on_unit_mode(uint8_t addr, uint8_t mode) {
-  Unit *u = this->find_unit_(addr);
-  if (u == nullptr) return;
-  if (u->mode != mode) {
-    u->mode = mode;
-    this->notify_climate_(u);
+  Unit *unit = this->find_unit_(addr);
+  if (unit == nullptr) return;
+  if (unit->mode != mode) {
+    unit->mode = mode;
+    this->notify_climate_(unit);
   }
 #ifdef USE_TEXT_SENSOR
-  auto *s = u->text[(int) UnitText::MODE];
-  if (s != nullptr) {
-    const char *n = mode_name(mode);
-    if (!s->has_state() || s->get_state() != n) s->publish_state(n);
+  auto *sensor = unit->text[(int) UnitText::MODE];
+  if (sensor != nullptr) {
+    const char *name = mode_name(mode);
+    if (!sensor->has_state() || sensor->get_state() != name) sensor->publish_state(name);
   }
 #endif
 }
 
 void DaikinDIII::on_unit_fan(uint8_t addr, uint8_t speed) {
-  Unit *u = this->find_unit_(addr);
-  if (u == nullptr) return;
-  if (u->fan != (int8_t) speed) {
-    u->fan = (int8_t) speed;
-    this->notify_climate_(u);
+  Unit *unit = this->find_unit_(addr);
+  if (unit == nullptr) return;
+  if (unit->fan != (int8_t) speed) {
+    unit->fan = (int8_t) speed;
+    this->notify_climate_(unit);
   }
 #ifdef USE_TEXT_SENSOR
-  auto *s = u->text[(int) UnitText::FAN];
-  if (s != nullptr) {
-    const char *n = fan_name(speed);
-    if (!s->has_state() || s->get_state() != n) s->publish_state(n);
+  auto *sensor = unit->text[(int) UnitText::FAN];
+  if (sensor != nullptr) {
+    const char *name = fan_name(speed);
+    if (!sensor->has_state() || sensor->get_state() != name) sensor->publish_state(name);
   }
 #endif
 }
 
 void DaikinDIII::on_unit_status(uint8_t addr, uint8_t bits) {
-  Unit *u = this->find_unit_(addr);
-  if (u == nullptr) return;
+  Unit *unit = this->find_unit_(addr);
+  if (unit == nullptr) return;
   // bit 0 = on. Use it until the first F5 31B frame (power) has been seen,
   // so power/climate are known within ~1 min after a reboot.
-  if (u->power == -1) this->on_unit_power(addr, (bits & 0x01) != 0);
-  const bool action_bits_changed = u->status < 0 || ((u->status ^ bits) & 0x24) != 0;
-  u->status = bits;
+  if (unit->power == -1) this->on_unit_power(addr, (bits & 0x01) != 0);
+  const bool action_bits_changed = unit->status < 0 || ((unit->status ^ bits) & 0x24) != 0;
+  unit->status = bits;
 #ifdef USE_BINARY_SENSOR
-  auto *s = u->binary[(int) UnitBinary::HEATING];
-  if (s != nullptr) s->publish_state((bits & 0x20) != 0);  // 0x20 = demand (thermo on)
+  auto *sensor = unit->binary[(int) UnitBinary::HEATING];
+  if (sensor != nullptr) sensor->publish_state((bits & 0x20) != 0);  // 0x20 = demand (thermo on)
 #endif
   // the group's climate shows the demand of all its units as hvac_action
   if (action_bits_changed) {
-    Unit *master = this->find_unit_(u->group);
+    Unit *master = this->find_unit_(unit->group);
     if (master != nullptr) this->notify_climate_(master);
   }
 }
@@ -565,11 +568,11 @@ void DaikinDIII::on_unit_status(uint8_t addr, uint8_t bits) {
 int DaikinDIII::group_demand(uint8_t group, bool *fan_running) const {
   int demand = -1;
   bool fan = false;
-  for (const auto &u : this->units_) {
-    if (u.group != group || u.status < 0) continue;
+  for (const auto &unit : this->units_) {
+    if (unit.group != group || unit.status < 0) continue;
     if (demand < 0) demand = 0;
-    if (u.status & 0x20) demand = 1;
-    if (u.status & 0x04) fan = true;
+    if (unit.status & 0x20) demand = 1;
+    if (unit.status & 0x04) fan = true;
   }
   if (fan_running != nullptr) *fan_running = fan;
   return demand;
@@ -577,78 +580,78 @@ int DaikinDIII::group_demand(uint8_t group, bool *fan_running) const {
 
 void DaikinDIII::publish_diagnostics_() {
 #ifdef USE_SENSOR
-  auto pub = [](sensor::Sensor *s, float v) {
-    if (s != nullptr && (!s->has_state() || s->get_raw_state() != v)) s->publish_state(v);
+  auto publish = [](sensor::Sensor *sensor, float value) {
+    if (sensor != nullptr && (!sensor->has_state() || sensor->get_raw_state() != value)) sensor->publish_state(value);
   };
-  pub(this->diag_sensors_[(int) DiagSensor::FRAMES_OK], (float) this->frames_ok_);
-  pub(this->diag_sensors_[(int) DiagSensor::FRAMES_ERR], (float) this->frames_err_);
-  pub(this->diag_sensors_[(int) DiagSensor::WRITE_QUEUE], (float) this->writer_.size());
-  pub(this->diag_sensors_[(int) DiagSensor::WRITES_LOST], (float) this->writer_.lost());
+  publish(this->diag_sensors_[(int) DiagSensor::FRAMES_OK], (float) this->frames_ok_);
+  publish(this->diag_sensors_[(int) DiagSensor::FRAMES_ERR], (float) this->frames_err_);
+  publish(this->diag_sensors_[(int) DiagSensor::WRITE_QUEUE], (float) this->writer_.size());
+  publish(this->diag_sensors_[(int) DiagSensor::WRITES_LOST], (float) this->writer_.lost());
   uint32_t now = millis();
-  for (auto &u : this->units_) {
-    pub(u.diag[(int) UnitDiag::COMMANDS], (float) u.commands);
-    if (u.diag[(int) UnitDiag::BUDGET] != nullptr && this->writer_.budget().enabled())
-      pub(u.diag[(int) UnitDiag::BUDGET], (float) this->writer_.budget().available(u.addr, now));
+  for (auto &unit : this->units_) {
+    publish(unit.diag[(int) UnitDiag::COMMANDS], (float) unit.commands);
+    if (unit.diag[(int) UnitDiag::BUDGET] != nullptr && this->writer_.budget().enabled())
+      publish(unit.diag[(int) UnitDiag::BUDGET], (float) this->writer_.budget().available(unit.addr, now));
   }
 #endif
 #ifdef USE_BINARY_SENSOR
-  auto *b = this->system_binary_[(int) SystemBinary::RAW_MQTT];
+  auto *sensor = this->system_binary_[(int) SystemBinary::RAW_MQTT];
 #ifdef DAIKIN_DIII_RAW_MQTT
-  if (b != nullptr) b->publish_state(this->mqtt_configured_ && this->mqtt_.connected());
+  if (sensor != nullptr) sensor->publish_state(this->mqtt_configured_ && this->mqtt_.connected());
 #else
-  if (b != nullptr) b->publish_state(false);
+  if (sensor != nullptr) sensor->publish_state(false);
 #endif
 #endif
 }
 
-void DaikinDIII::on_system_value(SystemField f, float v) {
+void DaikinDIII::on_system_value(SystemField field, float value) {
 #ifdef USE_SENSOR
-  auto *s = this->system_sensors_[(int) f];
-  if (s != nullptr && (!s->has_state() || s->get_raw_state() != v)) s->publish_state(v);
+  auto *sensor = this->system_sensors_[(int) field];
+  if (sensor != nullptr && (!sensor->has_state() || sensor->get_raw_state() != value)) sensor->publish_state(value);
 #endif
 }
 
 void DaikinDIII::on_compressor(uint8_t state) {
 #ifdef USE_BINARY_SENSOR
-  auto *s = this->system_binary_[(int) SystemBinary::COMPRESSOR];
-  if (s != nullptr) s->publish_state(state == 2);
+  auto *sensor = this->system_binary_[(int) SystemBinary::COMPRESSOR];
+  if (sensor != nullptr) sensor->publish_state(state == 2);
 #endif
 }
 
 void DaikinDIII::on_clock(uint8_t hour, uint8_t minute) {
 #ifdef USE_TEXT_SENSOR
-  auto *s = this->system_text_[(int) SystemText::CLOCK];
-  if (s != nullptr) {
-    char buf[8];
-    snprintf(buf, sizeof(buf), "%02u:%02u", hour, minute);
-    s->publish_state(buf);
+  auto *sensor = this->system_text_[(int) SystemText::CLOCK];
+  if (sensor != nullptr) {
+    char clock_text[8];
+    snprintf(clock_text, sizeof(clock_text), "%02u:%02u", hour, minute);
+    sensor->publish_state(clock_text);
   }
 #endif
 }
 
 void DaikinDIII::on_unit_role(uint8_t addr, bool master) {
-  Unit *u = this->find_unit_(addr);
-  if (u == nullptr || u->role == (master ? 1 : 0)) return;
-  u->role = master ? 1 : 0;
+  Unit *unit = this->find_unit_(addr);
+  if (unit == nullptr || unit->role == (master ? 1 : 0)) return;
+  unit->role = master ? 1 : 0;
   // The bus says which unit is the group master (it has the remote). A climate
   // is only correct on a master, so flag a unit table that disagrees.
-  bool configured_master = u->group == u->addr;
+  bool configured_master = unit->group == unit->addr;
   if (master != configured_master)
     ESP_LOGW(TAG, "Unit 0x%02X is a group %s on the bus, but configured as %s (group 0x%02X): check the unit table",
-             addr, master ? "master" : "member", configured_master ? "master" : "member", u->group);
+             addr, master ? "master" : "member", configured_master ? "master" : "member", unit->group);
 }
 
 void DaikinDIII::on_defrost(bool active) {
 #ifdef USE_BINARY_SENSOR
-  auto *s = this->system_binary_[(int) SystemBinary::DEFROST];
-  if (s != nullptr) s->publish_state(active);
+  auto *sensor = this->system_binary_[(int) SystemBinary::DEFROST];
+  if (sensor != nullptr) sensor->publish_state(active);
 #endif
 }
 
 void DaikinDIII::dump_config() {
   ESP_LOGCONFIG(TAG, "Daikin DIII-NET (F1F2) via P1P2Monitor ATmega");
   ESP_LOGCONFIG(TAG, "  Units: %u", (unsigned) this->units_.size());
-  for (auto &u : this->units_) ESP_LOGCONFIG(TAG, "    0x%02X (group 0x%02X)", u.addr, u.group);
+  for (auto &unit : this->units_) ESP_LOGCONFIG(TAG, "    0x%02X (group 0x%02X)", unit.addr, unit.group);
   if (!this->mqtt_broker_.empty())
     ESP_LOGCONFIG(TAG, "  Raw lines via MQTT %s:%u -> %s{R,E,X}%s", this->mqtt_broker_.c_str(), this->mqtt_port_,
                   this->mqtt_prefix_.c_str(), this->mqtt_suffix_.c_str());
@@ -708,8 +711,8 @@ uint8_t DaikinDIII::BridgeIsp::transfer(uint8_t out) {
 
 void DaikinDIII::BridgeIsp::delay_ms(uint32_t ms) { delay(ms); }
 
-void DaikinDIII::set_isp_enabled(bool en) {
-  if (en) {
+void DaikinDIII::set_isp_enabled(bool enabled) {
+  if (enabled) {
     if (this->isp_server_ != nullptr) return;
     if (this->isp_mosi_pin_ == nullptr || this->isp_miso_pin_ == nullptr || this->serial_enable_pin_ == nullptr ||
         this->reset_pin_ == nullptr) {
@@ -736,25 +739,25 @@ void DaikinDIII::isp_loop_() {
   const uint32_t now = millis();
   if (!this->isp_client_.connected()) {
     if (this->isp_.in_progmode() || this->isp_was_programming_) this->isp_close_client_("client disconnected");
-    WiFiClient c = this->isp_server_->accept();
-    if (c) {
-      this->isp_client_ = c;
+    WiFiClient client = this->isp_server_->accept();
+    if (client) {
+      this->isp_client_ = client;
       this->isp_client_.setNoDelay(true);
       this->isp_last_rx_ms_ = now;
-      ESP_LOGW(TAG, "ATmega programming: client %s connected", c.remoteIP().toString().c_str());
+      ESP_LOGW(TAG, "ATmega programming: client %s connected", client.remoteIP().toString().c_str());
     }
   } else {
     WiFiClient extra = this->isp_server_->accept();  // one programmer at a time
     if (extra) extra.stop();
-    uint8_t buf[256];
-    int avail = this->isp_client_.available();
-    if (avail > 0) {
-      int n = this->isp_client_.read(buf, avail < (int) sizeof(buf) ? (size_t) avail : sizeof(buf));
-      if (n > 0) {
+    uint8_t data[256];
+    int pending = this->isp_client_.available();
+    if (pending > 0) {
+      int length = this->isp_client_.read(data, pending < (int) sizeof(data) ? (size_t) pending : sizeof(data));
+      if (length > 0) {
         this->isp_last_rx_ms_ = now;
-        std::string out;
-        this->isp_.feed(buf, (size_t) n, out);
-        if (!out.empty()) this->isp_client_.write((const uint8_t *) out.data(), out.size());
+        std::string reply;
+        this->isp_.feed(data, (size_t) length, reply);
+        if (!reply.empty()) this->isp_client_.write((const uint8_t *) reply.data(), reply.size());
       }
     }
     // avrdude never pauses this long; a crashed client must not keep the ATmega in reset
@@ -795,8 +798,8 @@ void DaikinDIII::isp_after_programming_() {
   this->line_len_ = 0;
   delay(200);
   while (this->available()) {
-    uint8_t c;
-    if (!this->read_byte(&c)) break;
+    uint8_t discarded;
+    if (!this->read_byte(&discarded)) break;
   }
   this->write_str(MAGIC);
   this->write_str("* Dummy line 1.\n");

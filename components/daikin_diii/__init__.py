@@ -108,20 +108,20 @@ async def to_code(config):
     if CONF_SERIAL_ENABLE_PIN in config:
         cg.add(var.set_serial_enable_pin(await cg.gpio_pin_expression(config[CONF_SERIAL_ENABLE_PIN])))
     if CONF_RAW_MQTT in config:
-        m = config[CONF_RAW_MQTT]
+        raw_mqtt = config[CONF_RAW_MQTT]
         cg.add_library("heman/AsyncMqttClient-esphome", "2.0.0")
         cg.add_define("DAIKIN_DIII_RAW_MQTT")
-        cg.add(var.set_raw_mqtt(m["broker"], m["port"], m["username"], m["password"], m["client_id"],
-                                m["topic_prefix"], m["topic_suffix"]))
+        cg.add(var.set_raw_mqtt(raw_mqtt["broker"], raw_mqtt["port"], raw_mqtt["username"], raw_mqtt["password"],
+                                raw_mqtt["client_id"], raw_mqtt["topic_prefix"], raw_mqtt["topic_suffix"]))
     if CONF_ISP in config:
         isp = config[CONF_ISP]
         cg.add_define("DAIKIN_DIII_ISP")
-        mosi = await cg.gpio_pin_expression(isp["mosi_pin"])
-        miso = await cg.gpio_pin_expression(isp["miso_pin"])
-        cg.add(var.set_isp(mosi, miso, isp["port"], isp["window"].total_milliseconds))
+        mosi_pin = await cg.gpio_pin_expression(isp["mosi_pin"])
+        miso_pin = await cg.gpio_pin_expression(isp["miso_pin"])
+        cg.add(var.set_isp(mosi_pin, miso_pin, isp["port"], isp["window"].total_milliseconds))
     cg.add(var.set_source_address(config["source_address"]))
     budget = config["write_budget"]
     cg.add(var.set_write_budget(budget["burst"], (365 * 24 * 3600 * 1000) // budget["per_year"]))
-    for u in config[CONF_UNITS]:
-        addr = u[CONF_ADDRESS]
-        cg.add(var.add_unit(addr, u.get(CONF_B1_INDEX, 0xFF), u.get(CONF_GROUP, addr), u[CONF_HYDROBOX]))
+    for unit in config[CONF_UNITS]:
+        addr = unit[CONF_ADDRESS]
+        cg.add(var.add_unit(addr, unit.get(CONF_B1_INDEX, 0xFF), unit.get(CONF_GROUP, addr), unit[CONF_HYDROBOX]))

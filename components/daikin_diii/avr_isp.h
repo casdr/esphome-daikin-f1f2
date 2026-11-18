@@ -68,8 +68,8 @@ class Stk500 {
 
   // Feed bytes received from the TCP client. Replies are appended to `out`.
   // Bytes of an incomplete command are kept until the rest arrives.
-  void feed(const uint8_t *data, size_t n, std::string &out) {
-    for (size_t i = 0; i < n; i++) {
+  void feed(const uint8_t *data, size_t length, std::string &out) {
+    for (size_t i = 0; i < length; i++) {
       // A lone CRC_EOP where a command should start is the tail of a command
       // that was dropped (NOSYNC). Skip it, or the parser would stay one byte
       // off while avrdude resyncs with GET_SYNC + CRC_EOP pairs.
@@ -133,9 +133,9 @@ class Stk500 {
         return 5;
       case CMD_PROG_PAGE: {
         if (this->len_ < 3) return 0;
-        size_t n = ((size_t) this->buf_[1] << 8) | this->buf_[2];
-        if (n > MAX_BLOCK) return 2;  // refused in execute_
-        return 1 + 2 + 1 + n + 1;     // cmd, length, memtype, data, EOP
+        size_t block_length = ((size_t) this->buf_[1] << 8) | this->buf_[2];
+        if (block_length > MAX_BLOCK) return 2;  // refused in execute_
+        return 1 + 2 + 1 + block_length + 1;     // cmd, length, memtype, data, EOP
       }
       default:
         return 2;  // unknown command: answered after one more byte
@@ -144,8 +144,8 @@ class Stk500 {
 
   void execute_(std::string &out) {
     const uint8_t cmd = this->buf_[0];
-    const size_t n = this->needed_();
-    if (this->buf_[n - 1] != CRC_EOP) {
+    const size_t length = this->needed_();
+    if (this->buf_[length - 1] != CRC_EOP) {
       out.push_back((char) STK_NOSYNC);
       return;
     }
@@ -172,8 +172,8 @@ class Stk500 {
       case CMD_SET_DEVICE: {
         // parameter bytes 12-13: flash page size in bytes, big endian
         // (buf_[0] is the command, so parameter k is buf_[1 + k])
-        uint16_t ps = (uint16_t) ((this->buf_[13] << 8) | this->buf_[14]);
-        this->page_bytes_ = (ps >= 2 && ps <= MAX_BLOCK) ? ps : 128;
+        uint16_t page_size = (uint16_t) ((this->buf_[13] << 8) | this->buf_[14]);
+        this->page_bytes_ = (page_size >= 2 && page_size <= MAX_BLOCK) ? page_size : 128;
         this->ok_(out);
         break;
       }
@@ -200,10 +200,10 @@ class Stk500 {
         this->ok_(out);
         break;
       case CMD_UNIVERSAL: {
-        uint8_t r = this->progmode_ ? this->isp_(this->buf_[1], this->buf_[2], this->buf_[3], this->buf_[4]) : 0;
+        uint8_t reply = this->progmode_ ? this->isp_(this->buf_[1], this->buf_[2], this->buf_[3], this->buf_[4]) : 0;
         if (this->progmode_ && this->buf_[1] == 0xAC && this->buf_[2] == 0x80) this->port_->delay_ms(ERASE_DELAY_MS);
         out.push_back((char) STK_INSYNC);
-        out.push_back((char) r);
+        out.push_back((char) reply);
         out.push_back((char) STK_OK);
         break;
       }
@@ -231,8 +231,8 @@ class Stk500 {
   }
 
   // values avrdude reads (hardware / software version of an AVR ISP)
-  static uint8_t parameter_(uint8_t p) {
-    switch (p) {
+  static uint8_t parameter_(uint8_t parameter) {
+    switch (parameter) {
       case 0x80:  // hardware version
         return 2;
       case 0x81:  // software major
@@ -248,11 +248,11 @@ class Stk500 {
     }
   }
 
-  uint8_t isp_(uint8_t a, uint8_t b, uint8_t c, uint8_t d) {
-    this->port_->transfer(a);
-    this->port_->transfer(b);
-    this->port_->transfer(c);
-    return this->port_->transfer(d);
+  uint8_t isp_(uint8_t byte1, uint8_t byte2, uint8_t byte3, uint8_t byte4) {
+    this->port_->transfer(byte1);
+    this->port_->transfer(byte2);
+    this->port_->transfer(byte3);
+    return this->port_->transfer(byte4);
   }
 
   // Datasheet "Serial Programming Algorithm": RESET and SCK low, wait at
@@ -290,10 +290,10 @@ class Stk500 {
   // Write Program Memory Page (0x4C) for every page the block touches.
   // address_ is a word address for flash and a byte address for EEPROM.
   void prog_page_(std::string &out) {
-    const size_t n = ((size_t) this->buf_[1] << 8) | this->buf_[2];
+    const size_t block_length = ((size_t) this->buf_[1] << 8) | this->buf_[2];
     const uint8_t memtype = this->buf_[3];
     const uint8_t *data = this->buf_ + 4;
-    if (n > MAX_BLOCK || !this->progmode_) {
+    if (block_length > MAX_BLOCK || !this->progmode_) {
       out.push_back((char) STK_INSYNC);
       out.push_back((char) STK_FAILED);
       return;
@@ -302,16 +302,16 @@ class Stk500 {
       const uint16_t page_words = (uint16_t) (this->page_bytes_ / 2);
       uint16_t addr = this->address_;
       uint16_t page = (uint16_t) (addr - addr % page_words);
-      for (size_t i = 0; i < n; i += 2) {
+      for (size_t i = 0; i < block_length; i += 2) {
         uint16_t this_page = (uint16_t) (addr - addr % page_words);
         if (this_page != page) {
           this->commit_page_(page);
           page = this_page;
         }
-        uint8_t lo = data[i];
-        uint8_t hi = (i + 1 < n) ? data[i + 1] : 0xFF;
-        this->isp_(0x40, 0x00, (uint8_t) (addr & 0xFF), lo);
-        this->isp_(0x48, 0x00, (uint8_t) (addr & 0xFF), hi);
+        uint8_t low = data[i];
+        uint8_t high = (i + 1 < block_length) ? data[i + 1] : 0xFF;
+        this->isp_(0x40, 0x00, (uint8_t) (addr & 0xFF), low);
+        this->isp_(0x48, 0x00, (uint8_t) (addr & 0xFF), high);
         addr++;
       }
       this->commit_page_(page);
@@ -320,7 +320,7 @@ class Stk500 {
     } else if (memtype == 'E') {
       // EEPROM, one byte at a time (0xC0); not needed for a firmware update
       uint16_t addr = this->address_;
-      for (size_t i = 0; i < n; i++, addr++) {
+      for (size_t i = 0; i < block_length; i++, addr++) {
         this->isp_(0xC0, (uint8_t) (addr >> 8), (uint8_t) (addr & 0xFF), data[i]);
         this->wait_ready_(EEPROM_DELAY_MS);
       }
@@ -340,16 +340,16 @@ class Stk500 {
 
   // Poll RDY/BSY (0xF0, bit 0 = busy) until done, at most `max_ms`.
   void wait_ready_(uint32_t max_ms) {
-    for (uint32_t t = 0; t < max_ms; t++) {
+    for (uint32_t waited_ms = 0; waited_ms < max_ms; waited_ms++) {
       if ((this->isp_(0xF0, 0x00, 0x00, 0x00) & 0x01) == 0) return;
       this->port_->delay_ms(1);
     }
   }
 
   void read_page_(std::string &out) {
-    const size_t n = ((size_t) this->buf_[1] << 8) | this->buf_[2];
+    const size_t block_length = ((size_t) this->buf_[1] << 8) | this->buf_[2];
     const uint8_t memtype = this->buf_[3];
-    if (n > MAX_BLOCK || (memtype != 'F' && memtype != 'E')) {
+    if (block_length > MAX_BLOCK || (memtype != 'F' && memtype != 'E')) {
       out.push_back((char) STK_INSYNC);
       out.push_back((char) STK_FAILED);
       return;
@@ -357,13 +357,13 @@ class Stk500 {
     out.push_back((char) STK_INSYNC);
     uint16_t addr = this->address_;
     if (memtype == 'F') {
-      for (size_t i = 0; i < n; i += 2, addr++) {
+      for (size_t i = 0; i < block_length; i += 2, addr++) {
         out.push_back((char) (this->progmode_ ? this->isp_(0x20, (uint8_t) (addr >> 8), (uint8_t) addr, 0) : 0xFF));
-        if (i + 1 < n)
+        if (i + 1 < block_length)
           out.push_back((char) (this->progmode_ ? this->isp_(0x28, (uint8_t) (addr >> 8), (uint8_t) addr, 0) : 0xFF));
       }
     } else {
-      for (size_t i = 0; i < n; i++, addr++)
+      for (size_t i = 0; i < block_length; i++, addr++)
         out.push_back((char) (this->progmode_ ? this->isp_(0xA0, (uint8_t) (addr >> 8), (uint8_t) addr, 0) : 0xFF));
     }
     this->address_ = addr;

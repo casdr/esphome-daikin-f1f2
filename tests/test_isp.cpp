@@ -73,22 +73,22 @@ class FakeAtmega : public IspPort {
   int n_ = 0;
 
   uint8_t execute_() {
-    const uint8_t a = this->in_[0], b = this->in_[1], c = this->in_[2], d = this->in_[3];
+    const uint8_t byte1 = this->in_[0], byte2 = this->in_[1], byte3 = this->in_[2], byte4 = this->in_[3];
     if (!this->enabled) return 0xFF;
-    const uint16_t addr = (uint16_t) ((b << 8) | c);
-    switch (a) {
+    const uint16_t addr = (uint16_t) ((byte2 << 8) | byte3);
+    switch (byte1) {
       case 0xAC:
-        if (b == 0x80) std::fill(this->flash.begin(), this->flash.end(), 0xFFFF);  // chip erase
+        if (byte2 == 0x80) std::fill(this->flash.begin(), this->flash.end(), 0xFFFF);  // chip erase
         return 0;
       case 0x30: {  // read signature byte c
-        static const uint8_t sig[3] = {0x1E, 0x95, 0x0F};
-        return c < 3 ? sig[c] : 0;
+        static const uint8_t signature[3] = {0x1E, 0x95, 0x0F};
+        return byte3 < 3 ? signature[byte3] : 0;
       }
       case 0x40:  // load page buffer, low byte (word index in c)
-        this->page_buf[c % PAGE_WORDS] = (uint16_t) ((this->page_buf[c % PAGE_WORDS] & 0xFF00) | d);
+        this->page_buf[byte3 % PAGE_WORDS] = (uint16_t) ((this->page_buf[byte3 % PAGE_WORDS] & 0xFF00) | byte4);
         return 0;
       case 0x48:  // load page buffer, high byte
-        this->page_buf[c % PAGE_WORDS] = (uint16_t) ((this->page_buf[c % PAGE_WORDS] & 0x00FF) | (d << 8));
+        this->page_buf[byte3 % PAGE_WORDS] = (uint16_t) ((this->page_buf[byte3 % PAGE_WORDS] & 0x00FF) | (byte4 << 8));
         return 0;
       case 0x4C: {  // write page: the page containing word address `addr`
         size_t base = addr - addr % PAGE_WORDS;
@@ -103,7 +103,7 @@ class FakeAtmega : public IspPort {
       case 0x28:
         return (uint8_t) (this->flash[addr] >> 8);
       case 0xC0:
-        this->eeprom[addr % 1024] = d;
+        this->eeprom[addr % 1024] = byte4;
         return 0;
       case 0xA0:
         return this->eeprom[addr % 1024];
@@ -118,39 +118,39 @@ class FakeAtmega : public IspPort {
 static std::string run(Stk500 &stk, const std::vector<uint8_t> &cmd, bool byte_by_byte = false) {
   std::string out;
   if (byte_by_byte) {
-    for (uint8_t b : cmd) stk.feed(&b, 1, out);
+    for (uint8_t command_byte : cmd) stk.feed(&command_byte, 1, out);
   } else {
     stk.feed(cmd.data(), cmd.size(), out);
   }
   return out;
 }
 
-static std::string bytes(std::initializer_list<int> l) {
-  std::string s;
-  for (int b : l) s.push_back((char) b);
-  return s;
+static std::string bytes(std::initializer_list<int> values) {
+  std::string result;
+  for (int value : values) result.push_back((char) value);
+  return result;
 }
 
 static const std::string OK = bytes({0x14, 0x10});
 
 // SET_DEVICE as avrdude sends it for an m328p: page size 128 at parameters 12-13
 static std::vector<uint8_t> set_device() {
-  std::vector<uint8_t> v = {0x42, 0x86, 0x00, 0x00, 0x01, 0x01, 0x01, 0x01, 0x03, 0xFF, 0xFF,
-                            0xFF, 0xFF, 0x00, 0x80, 0x04, 0x00, 0x00, 0x00, 0x80, 0x00, 0x20};
-  return v;
+  std::vector<uint8_t> command = {0x42, 0x86, 0x00, 0x00, 0x01, 0x01, 0x01, 0x01, 0x03, 0xFF, 0xFF,
+                                  0xFF, 0xFF, 0x00, 0x80, 0x04, 0x00, 0x00, 0x00, 0x80, 0x00, 0x20};
+  return command;
 }
 
 static std::vector<uint8_t> prog_page(const std::vector<uint8_t> &data, char memtype = 'F') {
-  std::vector<uint8_t> v = {0x64, (uint8_t) (data.size() >> 8), (uint8_t) data.size(), (uint8_t) memtype};
-  v.insert(v.end(), data.begin(), data.end());
-  v.push_back(0x20);
-  return v;
+  std::vector<uint8_t> command = {0x64, (uint8_t) (data.size() >> 8), (uint8_t) data.size(), (uint8_t) memtype};
+  command.insert(command.end(), data.begin(), data.end());
+  command.push_back(0x20);
+  return command;
 }
 
-static std::vector<uint8_t> pattern(size_t n, uint8_t seed) {
-  std::vector<uint8_t> v(n);
-  for (size_t i = 0; i < n; i++) v[i] = (uint8_t) (seed + i * 7);
-  return v;
+static std::vector<uint8_t> pattern(size_t length, uint8_t seed) {
+  std::vector<uint8_t> data(length);
+  for (size_t i = 0; i < length; i++) data[i] = (uint8_t) (seed + i * 7);
+  return data;
 }
 
 static void test_session(bool byte_by_byte) {
@@ -179,34 +179,34 @@ static void test_session(bool byte_by_byte) {
   CHECK(chip.word(5) == 0xFFFF);  // erased
 
   // page 0
-  auto p0 = pattern(128, 1);
+  auto page0 = pattern(128, 1);
   CHECK(run(stk, {0x55, 0x00, 0x00, 0x20}, byte_by_byte) == OK);
-  CHECK(run(stk, prog_page(p0), byte_by_byte) == OK);
+  CHECK(run(stk, prog_page(page0), byte_by_byte) == OK);
   CHECK(chip.page_writes == 1);
-  CHECK(chip.word(0) == (uint16_t) (p0[0] | (p0[1] << 8)));
-  CHECK(chip.word(63) == (uint16_t) (p0[126] | (p0[127] << 8)));
+  CHECK(chip.word(0) == (uint16_t) (page0[0] | (page0[1] << 8)));
+  CHECK(chip.word(63) == (uint16_t) (page0[126] | (page0[127] << 8)));
 
   // a 256-byte block from word 0x40 covers pages 1 and 2; LOAD_ADDRESS is little endian
-  auto p12 = pattern(256, 9);
+  auto pages1_2 = pattern(256, 9);
   CHECK(run(stk, {0x55, 0x40, 0x00, 0x20}, byte_by_byte) == OK);
-  CHECK(run(stk, prog_page(p12), byte_by_byte) == OK);
+  CHECK(run(stk, prog_page(pages1_2), byte_by_byte) == OK);
   CHECK(chip.page_writes == 3);
-  CHECK(chip.word(0x40) == (uint16_t) (p12[0] | (p12[1] << 8)));
-  CHECK(chip.word(0xBF) == (uint16_t) (p12[254] | (p12[255] << 8)));
+  CHECK(chip.word(0x40) == (uint16_t) (pages1_2[0] | (pages1_2[1] << 8)));
+  CHECK(chip.word(0xBF) == (uint16_t) (pages1_2[254] | (pages1_2[255] << 8)));
   CHECK(chip.word(0xC0) == 0xFFFF);
 
   // a high page: word address 0x3FC0 (last page of the 32 KB flash)
-  auto plast = pattern(128, 77);
+  auto last_page = pattern(128, 77);
   CHECK(run(stk, {0x55, 0xC0, 0x3F, 0x20}, byte_by_byte) == OK);
-  CHECK(run(stk, prog_page(plast), byte_by_byte) == OK);
-  CHECK(chip.word(0x3FC0) == (uint16_t) (plast[0] | (plast[1] << 8)));
+  CHECK(run(stk, prog_page(last_page), byte_by_byte) == OK);
+  CHECK(chip.word(0x3FC0) == (uint16_t) (last_page[0] | (last_page[1] << 8)));
 
   // read back (verify)
   CHECK(run(stk, {0x55, 0x40, 0x00, 0x20}, byte_by_byte) == OK);
   std::string back = run(stk, {0x74, 0x01, 0x00, 'F', 0x20}, byte_by_byte);
   CHECK(back.size() == 258);
   CHECK(back.front() == 0x14 && back.back() == 0x10);
-  CHECK(back.substr(1, 256) == std::string(p12.begin(), p12.end()));
+  CHECK(back.substr(1, 256) == std::string(pages1_2.begin(), pages1_2.end()));
 
   // EEPROM write and read
   CHECK(run(stk, {0x55, 0x10, 0x00, 0x20}, byte_by_byte) == OK);
@@ -236,30 +236,30 @@ static void test_errors() {
   // the chip refuses programming enable twice; the third attempt (after a reset pulse) works
   FakeAtmega slow;
   slow.fail_enables = 2;
-  Stk500 s2(&slow);
-  CHECK(run(s2, {0x50, 0x20}) == OK);
-  CHECK(s2.sync_ok());
+  Stk500 slow_stk(&slow);
+  CHECK(run(slow_stk, {0x50, 0x20}) == OK);
+  CHECK(slow_stk.sync_ok());
   CHECK(slow.enable_attempts == 3);
 
   // a chip that never answers: avrdude gets OK, then a zero signature and stops
   FakeAtmega dead;
   dead.fail_enables = 1000;
-  Stk500 s3(&dead);
-  CHECK(run(s3, {0x50, 0x20}) == OK);
-  CHECK(!s3.sync_ok());
-  CHECK(run(s3, {0x75, 0x20}) == bytes({0x14, 0xFF, 0xFF, 0xFF, 0x10}));
+  Stk500 dead_stk(&dead);
+  CHECK(run(dead_stk, {0x50, 0x20}) == OK);
+  CHECK(!dead_stk.sync_ok());
+  CHECK(run(dead_stk, {0x75, 0x20}) == bytes({0x14, 0xFF, 0xFF, 0xFF, 0x10}));
 
   // client disconnects mid-session: abort releases the ATmega
   FakeAtmega chip2;
-  Stk500 s4(&chip2);
-  CHECK(run(s4, {0x50, 0x20}) == OK);
-  std::string partial = run(s4, {0x64, 0x00, 0x80, 'F', 0x01, 0x02});  // incomplete page
+  Stk500 aborted_stk(&chip2);
+  CHECK(run(aborted_stk, {0x50, 0x20}) == OK);
+  std::string partial = run(aborted_stk, {0x64, 0x00, 0x80, 'F', 0x01, 0x02});  // incomplete page
   CHECK(partial.empty());
-  s4.abort();
-  CHECK(!s4.in_progmode());
+  aborted_stk.abort();
+  CHECK(!aborted_stk.in_progmode());
   CHECK(!chip2.reset_held && !chip2.pins_taken);
   CHECK(chip2.page_writes == 0);
-  CHECK(run(s4, {0x30, 0x20}) == OK);  // the partial command was dropped
+  CHECK(run(aborted_stk, {0x30, 0x20}) == OK);  // the partial command was dropped
 }
 
 int main() {
