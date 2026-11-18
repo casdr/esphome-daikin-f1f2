@@ -41,7 +41,7 @@ For the system:
 | **Evaporating / condensing temperature** | Te and Tc of the refrigerant circuit. |
 | **Discharge temperature** per outdoor module | Compressor discharge *(hypothesis)*. |
 | **Compressor** | Running or not. |
-| **Defrost or oil return** | An outdoor module in the state seen during defrost *(hypothesis)*. |
+| **Defrost or oil return** | An outdoor module in sub-state `07`, a recurring 9-minute operation that looks more like oil return than defrost *(hypothesis)*. |
 | **System clock** | The VRV's own clock. |
 | Diagnostics | Bus frames OK / with errors, write queue, last bus command, compressor and fan steps and a capacity value (raw, partly guessed). |
 

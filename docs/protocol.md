@@ -185,7 +185,7 @@ gets the same ACK and the same status change as one from the iTM.
 | `F5` 10/8 B, page `91` | each unit → `FF` | hourly at hh:10:40, after the iTM's `E5 … 50 91` |
 | `B1` | unit index → `00` | in bursts; sensor values change about every 50 s |
 | `A9` 24 B | `00` → each unit index | periodic, per unit |
-| `A9` 46 B, page `6A` | `00` → each unit index | in bursts on a change of outdoor state |
+| `A9` 46 B, page `6A` | `00` → each unit index | in bursts, trigger unknown |
 | `A9` 16 B | `00` → unit index | on power-off |
 | `E9` | `00` → `FF` | per page, every 20 s to 10 min, see [`E9`](#e9-outdoorsystem-data) |
 | `AD` | unit index → `00` | on events (thermo on/off) |
@@ -242,7 +242,7 @@ F5 00 FF 1C 11 | 82 61 01 00 00 00 00 00 00 13 1A 37 00 00 80 02 00 | 0A
 | 11 | [status bits](#status-bits) | confirmed | `f5_status::STATUS` |
 | 14–15 | room (return-air) temperature, 8.8 | within ±0.2 °C of the iTM for all units (the iTM rounds down to 0.1) | `f5_status::ROOM` |
 | 16 | high nibble = fan speed, low nibble = airflow direction, see [fan and airflow codes](#fan-and-airflow-codes) | confirmed with iTM commands | `f5_status::FAN_AIRFLOW` |
-| 19 | `80` normally; `81` for a few minutes on 2-00 and 2-01 only, during a possible defrost | seen once, 2026-11-16 | |
+| 19 | `80` normally; `81` for a few minutes on 2-00 and 2-01 only: during the low-capacity step of `E9` page `6A` sub-state `07` (16 and 18/11), and on 17/11 also 14 times without it | *(hyp: a step on the second line, 2-xx)* | |
 | 20 | `02` while the unit is off; `0x30–0xA5` while it runs, changing about once a minute. Not a counter | *(hyp: expansion valve opening or capacity request)* | |
 
 - The room temperature changes about every 30 s.
@@ -282,7 +282,7 @@ The hydrobox sends no 31 B frame, so its power state comes from status bit `0x01
 | 9 | `00` without heat demand; counts `01` → `0F` and back while it has demand, about one step per minute | *(hyp: requested capacity step)* | `f5_hydrobox::DEMAND_STEP` |
 | 11 | [status bits](#status-bits) | confirmed during a start-up: `01` → `21` → `23` → `03` → `01` | `f5_hydrobox::STATUS` |
 | 14–15 | hydrobox temperature (water?), 8.8 | 23.66 against 23.7 on the iTM | `f5_hydrobox::TEMPERATURE` |
-| 19 | `80` normally, `81` during a possible defrost | seen once | |
+| 19 | `80` normally, `81` as on the indoor units 2-xx (byte 19 of the 23 B frame) | | |
 
 The 37 B hydrobox frame changes between off and heating. Byte 6 is power (`00`/`01`),
 within 2 s of a command. Byte 7 has always been `01` *(hyp: the mode, 1 = heat)*.
@@ -407,7 +407,7 @@ Tc and outside air over logs that include about 35 min of compressor running
 | | | | | 17–18 (8.8) | outside air | r = 1.00 | |
 | | | | | 25 | outside air, whole °C | | |
 | | | | | 30, 36, 38, 42 | 0/small idle, large running | *(hyp: run counters / capacity)* | |
-| `6A` | 46 | 10 | on change | 11–16 | 3× (state, sub-state): `01 00` idle, `02 00` running, `01 09` right after stop, `01 07` during a possible defrost | *(hyp: per module; 09 = residual/oil return, 07 = defrost or oil return)* | `e9_page_6a::SUB_STATE_1`, `e9_page_6a::SUB_STATE_2`, `e9_page_6a::SUB_STATE_3` |
+| `6A` | 46 | 10 | on change | 11–16 | 3× (state, sub-state): `01 00` idle, `02 00` running, `01 09` right after stop, `01 07` during a 9-minute special operation, see below | *(hyp: per module; 09 = residual/oil return, 07 = oil return or another recovery operation)* | `e9_page_6a::SUB_STATE_1`, `e9_page_6a::SUB_STATE_2`, `e9_page_6a::SUB_STATE_3` |
 | | | | | 17–19 | `20 10 10` / `20 20 20` | | |
 | | | | | 20–23 | `07 D0 14 C8` constant (= 2000, 5320) | | |
 | `6E` | 45 | 0C | 30 s | 11 | `00`/`0C` | | |
@@ -417,20 +417,38 @@ Tc and outside air over logs that include about 35 min of compressor running
 | `E6` | 36 | 1C | at hh:m5:04 | 11–12 | clock: hours, minutes | `13 23` = 19:35, `14 05` = 20:05 | `e9_page_e6::HOUR`, `e9_page_e6::MINUTE` |
 | | | | | 13–30 | `10 20 00 00 00 12 3A 71 21 00 60 08 58 C0 07 C0 B4 04` constant | | |
 | `2F` | 8 | 08/0C/10 | 2 min | 6 | `01` constant. Comes as 3 frames with b3 08, 0C and 10 | *(hyp: heartbeat per device)* | |
-| `6D` | 32 | 10 | seen once | 10–11 | `01 81`, bytes 12–30 all `00` | see below | |
+| `6D` | 32 | 10 | daily | 10–11 | `01 81`, bytes 12–30 all `00` | see below | |
 
-Page `6D` was seen once in about 114,000 frames (2026-11-16):
+Page `6D` comes once a day, always the same frame:
 `E9 00 FF 10 1A | 6D 6D 67 C0 18 01 81 00 … 00 | 3C`. After the system ID come `01`
-(outdoor system 1, as in the other pages), `81` and 19 zero bytes. The traffic around
-it was normal. The zero payload suggests an event or status page with nothing to
+(outdoor system 1, as in the other pages), `81` and 19 zero bytes. On the test system it
+came at 11:40:54, 11:41:03 and 11:41:13 on three days in a row, about 10 s later each
+day *(hyp: a 24-hour timer in the outdoor unit, counted from its own start, that runs
+slightly slow)*. The zero payload suggests an event or status page with nothing to
 report *(hyp)*.
 
-A possible defrost was seen once, at an outdoor temperature of 7–8 °C. Page `6A`
-went from `02 00 02 00 02 00` to `01 07 01 07 02 00` for about 8 minutes. Page `65`
-byte 36 dropped from 246 to 1 and ramped up again, and Te fell to −4…−6 °C. Meanwhile
-`F5` byte 19 was `81` on 2-00 and 2-01 only. Afterwards the gas pipes of 2-01 and 1-04
-dropped from about 55 to 15–25 °C for a few minutes (indoor coils cold), then
-recovered *(hyp: defrost or oil return)*.
+Sub-state `07` on modules 1 and 2 (`01 07 01 07 02 00`) is a recurring operation of
+about 9 minutes, seen 6 times in three days at 7–9 °C outside, sometimes 8 h 15 min
+apart. It was first taken for a defrost; a closer trace of two of them (2026-11-18)
+makes that unlikely:
+
+- For about 4 minutes page `65` byte 36 (capacity) climbs from about 125 to 245 with
+  Te at +1…+6 °C.
+- Then capacity drops to near 0 within 20 s, Te dips to −3…−5 °C and Tc rises to about
+  44 °C for 2–3 minutes. During this step `F5` byte 19 was `81` on 2-00 and 2-01 only
+  (that flag also comes without sub-state `07`).
+- The rest runs at capacity 110–135 with Te around 0…+2 °C, followed by sub-state `09`
+  on all three modules for a minute or two.
+- The indoor gas pipes stay at 35–51 °C throughout, so the indoor units keep heating:
+  no reverse cycle shows on the indoor side, and with Te above 0 °C most of the time
+  frost on the outdoor coil is unlikely.
+- After the morning ones on 16/11 and 18/11 the gas pipe of 2-01 (on 16/11 also 1-04)
+  went cold (10–25 °C) for several minutes while the others stayed hot; not after the
+  afternoon one on 18/11, when the compressor stopped. The others weren't traced.
+
+*(hyp: an oil-return or recovery operation; Daikin VRV systems run oil return at
+intervals.)* The component's binary sensor is called *Defrost or oil return* for this
+reason.
 
 ### `A5`: setting command
 
@@ -459,7 +477,7 @@ Then per master:
 |--------|---------|
 | 24 B (`A9 00 nn 10 12`) | nearly identical for every unit; byte 18 = `1B`/`09`/`1A` |
 | 16 B | sent on power-off; byte 13 `07` → `03`. Seen for nn = 08, 09, 0B, 0C when group 1-04 was switched off |
-| 46 B (`A9 00 nn 10 28`) | page `6A`, the per-module outdoor state of `E9` page `6A`, sent to each unit in bursts on a change of outdoor state (for example compressor start) |
+| 46 B (`A9 00 nn 10 28`) | page `6A`, the per-module outdoor state of `E9` page `6A`, sent to each unit in bursts. Not on every change of outdoor state: on 2026-11-18 page `6A` changed 15 times and there was one burst, right after all groups were switched off. The trigger is unknown |
 
 46 B layout: `A9 00 dd 10 28 | 6A 6D 67 C0 18 01 02 00 02 00 02 00 SS 07 D0 14 C8 …`.
 SS (payload[13]) steps `10` → `11` → `12` → `20`: `20` = standby/stopped for that
@@ -795,8 +813,9 @@ Examples for unit 0:
 - `FD` and `E5` in general.
 - Most `E9` fields marked *(hyp)* above, and what "module 1/2" are on a single-casing
   outdoor unit.
-- `E9` page `6D`, seen once.
-- Possible defrost: sub-state `07` and `F5` byte 19 `81`.
+- `E9` page `6D`, daily: what it reports.
+- `E9` page `6A` sub-state `07` (oil return?) and `F5` byte 19 `81` on the 2-xx units.
+- What triggers the `A9` 46 B bursts.
 - `A5` payload[3] (which setpoint applies?), payload[10] and payload[13].
 - `A4` and `BD` frames.
 - Outlet pairs: the value for blocking a single outlet, whether member units apply
