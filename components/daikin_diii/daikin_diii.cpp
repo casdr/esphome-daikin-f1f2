@@ -384,7 +384,7 @@ void DaikinDIII::handle_line_(const char *line) {
       if (::diii::frame_valid(frame, length)) {
         this->frames_ok_++;
         // our own frame read back from the bus: only now is it written
-        if (frame[0] == 0xA5 && this->writer_.on_bus_frame(frame, length)) {
+        if (frame[::diii::header::CMD] == 0xA5 && this->writer_.on_bus_frame(frame, length)) {
           std::string hex;
           char hex_byte[3];
           for (size_t i = 0; i < length; i++) {
@@ -395,7 +395,7 @@ void DaikinDIII::handle_line_(const char *line) {
           this->set_last_write_(std::string("on bus ") + hex);
         }
         if (::diii::is_setting_command(frame, length)) {  // from the iTM, a remote or us
-          Unit *unit = this->find_unit_(frame[2]);
+          Unit *unit = this->find_unit_(frame[::diii::header::DST]);
           if (unit != nullptr) unit->commands++;
         }
         ::diii::decode_frame(frame, length, this->b1_to_diii_, *this);

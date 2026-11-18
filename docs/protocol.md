@@ -77,6 +77,15 @@ An ACK is a single byte `06`, sent about 2 ms after a directed frame (`A5`, `A9`
 Byte offsets in this document count from the start of the frame (cmd = byte 0),
 unless they say "payload[n]".
 
+The component names the offsets it reads or writes in
+[`diii_decoder.h`](../components/daikin_diii/diii_decoder.h), one namespace per frame
+type, for example `f5_status::MODE` for byte 6 of the `F5` 23 B frame. The *code* column
+of each frame table below gives the name; a byte without one isn't used by the code.
+The header bytes are `header::CMD` (0), `header::SRC` (1), `header::DST` (2),
+`header::CLASS` (3, `b3`), `header::PAYLOAD_LENGTH` (4) and `header::PAYLOAD` (5, payload[0]).
+All names are frame offsets, also for the `A5` command whose table counts payload
+bytes (payload[n] = frame byte 5 + n).
+
 ## Data types
 
 | type | encoding | example |
@@ -224,17 +233,17 @@ F5 00 FF 1C 11 | 82 61 01 00 00 00 00 00 00 13 1A 37 00 00 80 02 00 | 0A
                |  5  6  7  8  9 10 11 12 13 14 15 16 17 18 19 20 21 | cs
 ```
 
-| byte | meaning | confidence / evidence |
-|------|---------|-----------------------|
-| 5 | `0x82` | *(hyp: on/off + flags)* |
-| 6 | operating mode, see [mode codes](#mode-codes) | confirmed with the iTM |
-| 7 | `01` heat, `02` cool | seen in heat and cool |
-| 9 | `05` while heating, `00` otherwise (also `00` in cool) | |
-| 11 | [status bits](#status-bits) | confirmed |
-| 14–15 | room (return-air) temperature, 8.8 | within ±0.2 °C of the iTM for all units (the iTM rounds down to 0.1) |
-| 16 | high nibble = fan speed, low nibble = airflow direction, see [fan and airflow codes](#fan-and-airflow-codes) | confirmed with iTM commands |
-| 19 | `80` normally; `81` for a few minutes on 2-00 and 2-01 only, during a possible defrost | seen once, 2026-11-16 |
-| 20 | `02` while the unit is off; `0x30–0xA5` while it runs, changing about once a minute. Not a counter | *(hyp: expansion valve opening or capacity request)* |
+| byte | meaning | confidence / evidence | code |
+|------|---------|-----------------------|------|
+| 5 | `0x82` | *(hyp: on/off + flags)* | |
+| 6 | operating mode, see [mode codes](#mode-codes) | confirmed with the iTM | `f5_status::MODE` |
+| 7 | `01` heat, `02` cool | seen in heat and cool | |
+| 9 | `05` while heating, `00` otherwise (also `00` in cool) | | |
+| 11 | [status bits](#status-bits) | confirmed | `f5_status::STATUS` |
+| 14–15 | room (return-air) temperature, 8.8 | within ±0.2 °C of the iTM for all units (the iTM rounds down to 0.1) | `f5_status::ROOM` |
+| 16 | high nibble = fan speed, low nibble = airflow direction, see [fan and airflow codes](#fan-and-airflow-codes) | confirmed with iTM commands | `f5_status::FAN_AIRFLOW` |
+| 19 | `80` normally; `81` for a few minutes on 2-00 and 2-01 only, during a possible defrost | seen once, 2026-11-16 | |
+| 20 | `02` while the unit is off; `0x30–0xA5` while it runs, changing about once a minute. Not a counter | *(hyp: expansion valve opening or capacity request)* | |
 
 - The room temperature changes about every 30 s.
 - The airflow direction is only in this frame. After a command it shows up in
@@ -251,29 +260,29 @@ Example, unit on in cool, setpoint 22:
 F5 aa FF 1C 19 | 80 01 62 02 00 00 00 00 16 00 00 00 00 12 05 00 04 02 04 00 80 … | cs
 ```
 
-| byte | meaning | confidence |
-|------|---------|------------|
-| 6 | power: `00` off, `01` on | confirmed |
-| 7 | operating mode, see [mode codes](#mode-codes) | confirmed |
-| 8 | `00` fan, `01` heat, `02` cool (same as `A5` payload[3]) | *(hyp for fan)* |
-| 13 | setpoint, whole °C | confirmed |
-| 17 | `00` → `02` on power-on | |
-| 18 | `0x12` group master, `0x10` member. Constant per role, so a role flag | confirmed |
-| 19 | [status bits](#status-bits) | confirmed |
-| 22 | `02` master, `12` member | |
-| 23 | `00` → `04` on power-on | |
-| 27 | `0` master, `1` member | |
+| byte | meaning | confidence | code |
+|------|---------|------------|------|
+| 6 | power: `00` off, `01` on | confirmed | `f5_change::POWER` |
+| 7 | operating mode, see [mode codes](#mode-codes) | confirmed | `f5_change::MODE` |
+| 8 | `00` fan, `01` heat, `02` cool (same as `A5` payload[3]) | *(hyp for fan)* | |
+| 13 | setpoint, whole °C | confirmed | `f5_change::SETPOINT` |
+| 17 | `00` → `02` on power-on | | |
+| 18 | `0x12` group master, `0x10` member. Constant per role, so a role flag | confirmed | `f5_change::ROLE` |
+| 19 | [status bits](#status-bits) | confirmed | `f5_change::STATUS` |
+| 22 | `02` master, `12` member | | |
+| 23 | `00` → `04` on power-on | | |
+| 27 | `0` master, `1` member | | |
 
 #### `F5` 22 B: hydrobox status
 
 The hydrobox sends no 31 B frame, so its power state comes from status bit `0x01`.
 
-| byte | meaning | confidence |
-|------|---------|------------|
-| 9 | `00` without heat demand; counts `01` → `0F` and back while it has demand, about one step per minute | *(hyp: requested capacity step)* |
-| 11 | [status bits](#status-bits) | confirmed during a start-up: `01` → `21` → `23` → `03` → `01` |
-| 14–15 | hydrobox temperature (water?), 8.8 | 23.66 against 23.7 on the iTM |
-| 19 | `80` normally, `81` during a possible defrost | seen once |
+| byte | meaning | confidence | code |
+|------|---------|------------|------|
+| 9 | `00` without heat demand; counts `01` → `0F` and back while it has demand, about one step per minute | *(hyp: requested capacity step)* | `f5_hydrobox::DEMAND_STEP` |
+| 11 | [status bits](#status-bits) | confirmed during a start-up: `01` → `21` → `23` → `03` → `01` | `f5_hydrobox::STATUS` |
+| 14–15 | hydrobox temperature (water?), 8.8 | 23.66 against 23.7 on the iTM | `f5_hydrobox::TEMPERATURE` |
+| 19 | `80` normally, `81` during a possible defrost | seen once | |
 
 The 37 B hydrobox frame changes between off and heating. Byte 6 is power (`00`/`01`),
 within 2 s of a command. Byte 7 has always been `01` *(hyp: the mode, 1 = heat)*.
@@ -334,14 +343,14 @@ and 33 B. Every frame is ACKed. It contains several temperatures
 
 The 46-byte frames from indoor units:
 
-| byte | meaning | confidence / evidence |
-|------|---------|-----------------------|
-| 11–12 | unknown temperature, 21–24 °C | *(open)* |
-| 13–14 | pipe temperature A, 8.8 | *(hyp: liquid)*; 19 → 27–41 °C while heating |
-| 15–16 | pipe temperature B, 8.8 | *(hyp: gas)*; 19 → ~42 °C while heating, ≈ Tc |
-| 17–18 | setpoint: byte 17 whole °C, byte 18 flags (`16 00` = 22) | follows every setpoint command |
-| 30–31 | remote-controller sensor, 8.8 | for 1-04 equal to P1P2 `Temperature_Room`; units without a remote show a fixed `0x1610` (22.06) |
-| 43–44 | return air, 8.8 | equal to the `F5` room temperature |
+| byte | meaning | confidence / evidence | code |
+|------|---------|-----------------------|------|
+| 11–12 | unknown temperature, 21–24 °C | *(open)* | |
+| 13–14 | pipe temperature A, 8.8 | *(hyp: liquid)*; 19 → 27–41 °C while heating | `b1_unit::PIPE_A` |
+| 15–16 | pipe temperature B, 8.8 | *(hyp: gas)*; 19 → ~42 °C while heating, ≈ Tc | `b1_unit::PIPE_B` |
+| 17–18 | setpoint: byte 17 whole °C, byte 18 flags (`16 00` = 22) | follows every setpoint command | `b1_unit::SETPOINT` |
+| 30–31 | remote-controller sensor, 8.8 | for 1-04 equal to P1P2 `Temperature_Room`; units without a remote show a fixed `0x1610` (22.06) | `b1_unit::REMOTE` |
+| 43–44 | return air, 8.8 | equal to the `F5` room temperature | `b1_unit::INTAKE` |
 
 The 34-byte frames from indoor units:
 
@@ -359,7 +368,7 @@ Broadcast by the outdoor unit: `E9 00 FF b3 len | page 6D 67 C0 18 unit … | cs
 
 - payload[0] = page id. payload[1..4] = `6D 67 C0 18`, the system ID.
 - payload[5] = `01` (outdoor system 1), or `20` on page `6E`.
-- On page `E0` (41 B), byte 11 is a sub-page: `02`/`03` = status of module 1/2,
+- On page `E0` (41 B), byte 11 is a sub-page (`e9_page_e0::SUB_PAGE`): `02`/`03` = status of module 1/2,
   `12`/`13` = temperatures of module 1/2. A REYQ10T is, as far as known, a single
   casing, so "module 1/2" are probably not two outdoor units *(open: compressors or
   circuits?)*.
@@ -368,47 +377,47 @@ Field meanings come from correlating each byte with the compressor state and wit
 Tc and outside air over logs that include about 35 min of compressor running
 (`tools/analyse_e9.py`). "r" is that correlation.
 
-| page | len | b3 | interval | byte | meaning | evidence / confidence |
-|------|-----|----|----------|------|---------|-----------------------|
-| `65` | 46 | 10 | 20 s | 11 | compressor: `00` off, `01` starting/stopping, `02` running | coincides with heat demand |
-| `65` | | | | 14 | `04` while running | |
-| `65` | | | | 15–16 (8.8, sign-mag) | Te, evaporating temperature (low pressure) | ≈ outdoor when idle, drops to −11 °C while heating |
-| `65` | | | | 17–18 (8.8) | Tc, condensing temperature (high pressure) | ≈ outdoor when idle, up to 42 °C; = indoor gas pipes |
-| `65` | | | | 26 | rises 0x78→0xDE while running, 0 when idle | *(hyp: compressor frequency/capacity)* |
-| `65` | | | | 27 | outside air, whole °C | r = 0.91 |
-| `65` | | | | 36 | `02` idle, 0x47–0x83 running | *(hyp: capacity %)* |
-| `65` | | | | 37 | `26` idle / `29` running | |
-| `67` | 44 | 10 | 20 s | 21–22 (8.8) | outside air | r = 1.00; also correct while the compressor runs; matched a local weather report and a car thermometer within 1 °C |
-| `67` | | | | 41–42 (8.8) | Tc (copy of `65` byte 17) | r = 1.00 |
-| `E0`/12,13 | 41 | 1C | 60 s | 15 | outside air, whole °C (per module) | r = 0.95 |
-| | | | | 16 | discharge temperature | *(hyp)*; 13 °C idle → 48 °C running, r(Tc) = 0.96 |
-| | | | | 18 | 27–42 °C, rises slowly, stays high afterwards | *(hyp: inverter fin / compressor body)* |
-| | | | | 19–21, 25 | heat-exchanger temperatures, drop below ambient in heating | *(hyp)* |
-| | | | | 23–24, 27, 29, 30 | can go negative (sign-mag, e.g. `88` = −8) | *(hyp: suction/Te per module)* |
-| | | | | 28 | Tc, whole °C | r = 1.00 |
-| | | | | 37 | 0 idle, 6–9 running | *(hyp: compressor step)* |
-| | | | | 39 | 0 idle, 3–7 running | *(hyp: outdoor fan step)* |
-| `E0`/02,03 | 41 | 1C | 60 s | 14–16 | `00 00 00` idle → `01 1F 03` running | |
-| | | | | 20–21 | flags `08 60`/`88 70` idle, `80 F0` running | |
-| | | | | 22, 24 | 0 → up to 0x67/0x7E running | *(hyp: compressor Hz actual/target)* |
-| | | | | 26 | `02` while running | |
-| | | | | 32 | 0 → 0x14–0x2F running | *(hyp: current or capacity)* |
-| | | | | 38 | 0 → 0x4F/0x50/0x59 running | *(hyp: fan rpm step)* |
-| `E0` | 46 | 1C | 60 s | 14–15 | `40 00` idle / `52 02` running | |
-| | | | | 17–18 (8.8) | outside air | r = 1.00 |
-| | | | | 25 | outside air, whole °C | |
-| | | | | 30, 36, 38, 42 | 0/small idle, large running | *(hyp: run counters / capacity)* |
-| `6A` | 46 | 10 | on change | 11–16 | 3× (state, sub-state): `01 00` idle, `02 00` running, `01 09` right after stop, `01 07` during a possible defrost | *(hyp: per module; 09 = residual/oil return, 07 = defrost or oil return)* |
-| | | | | 17–19 | `20 10 10` / `20 20 20` | |
-| | | | | 20–23 | `07 D0 14 C8` constant (= 2000, 5320) | |
-| `6E` | 45 | 0C | 30 s | 11 | `00`/`0C` | |
-| | | | | 12–13 | `14 30` / `94 10` | |
-| | | | | 26–36 | 6× `00 80` / `80 00` | *(hyp: flags for 6 zones/groups)* |
-| `68` | 17 | 08 | 5–10 min | 10–15 | `01 01 11 11 11 00` constant | *(hyp: configuration)* |
-| `E6` | 36 | 1C | at hh:m5:04 | 11–12 | clock: hours, minutes | `13 23` = 19:35, `14 05` = 20:05 |
-| | | | | 13–30 | `10 20 00 00 00 12 3A 71 21 00 60 08 58 C0 07 C0 B4 04` constant | |
-| `2F` | 8 | 08/0C/10 | 2 min | 6 | `01` constant. Comes as 3 frames with b3 08, 0C and 10 | *(hyp: heartbeat per device)* |
-| `6D` | 32 | 10 | seen once | 10–11 | `01 81`, bytes 12–30 all `00` | see below |
+| page | len | b3 | interval | byte | meaning | evidence / confidence | code |
+|------|-----|----|----------|------|---------|-----------------------|------|
+| `65` | 46 | 10 | 20 s | 11 | compressor: `00` off, `01` starting/stopping, `02` running | coincides with heat demand | `e9_page_65::COMPRESSOR` |
+| `65` | | | | 14 | `04` while running | | |
+| `65` | | | | 15–16 (8.8, sign-mag) | Te, evaporating temperature (low pressure) | ≈ outdoor when idle, drops to −11 °C while heating | `e9_page_65::T_EVAP` |
+| `65` | | | | 17–18 (8.8) | Tc, condensing temperature (high pressure) | ≈ outdoor when idle, up to 42 °C; = indoor gas pipes | `e9_page_65::T_COND` |
+| `65` | | | | 26 | rises 0x78→0xDE while running, 0 when idle | *(hyp: compressor frequency/capacity)* | |
+| `65` | | | | 27 | outside air, whole °C | r = 0.91 | |
+| `65` | | | | 36 | `02` idle, 0x47–0x83 running | *(hyp: capacity %)* | `e9_page_65::CAPACITY` |
+| `65` | | | | 37 | `26` idle / `29` running | | |
+| `67` | 44 | 10 | 20 s | 21–22 (8.8) | outside air | r = 1.00; also correct while the compressor runs; matched a local weather report and a car thermometer within 1 °C | `e9_page_67::OUTDOOR` |
+| `67` | | | | 41–42 (8.8) | Tc (copy of `65` byte 17) | r = 1.00 | |
+| `E0`/12,13 | 41 | 1C | 60 s | 15 | outside air, whole °C (per module) | r = 0.95 | |
+| | | | | 16 | discharge temperature | *(hyp)*; 13 °C idle → 48 °C running, r(Tc) = 0.96 | `e9_page_e0::DISCHARGE` |
+| | | | | 18 | 27–42 °C, rises slowly, stays high afterwards | *(hyp: inverter fin / compressor body)* | |
+| | | | | 19–21, 25 | heat-exchanger temperatures, drop below ambient in heating | *(hyp)* | |
+| | | | | 23–24, 27, 29, 30 | can go negative (sign-mag, e.g. `88` = −8) | *(hyp: suction/Te per module)* | |
+| | | | | 28 | Tc, whole °C | r = 1.00 | |
+| | | | | 37 | 0 idle, 6–9 running | *(hyp: compressor step)* | `e9_page_e0::COMP_STEP` |
+| | | | | 39 | 0 idle, 3–7 running | *(hyp: outdoor fan step)* | `e9_page_e0::FAN_STEP` |
+| `E0`/02,03 | 41 | 1C | 60 s | 14–16 | `00 00 00` idle → `01 1F 03` running | | |
+| | | | | 20–21 | flags `08 60`/`88 70` idle, `80 F0` running | | |
+| | | | | 22, 24 | 0 → up to 0x67/0x7E running | *(hyp: compressor Hz actual/target)* | `e9_page_e0::COMP_FREQ` |
+| | | | | 26 | `02` while running | | |
+| | | | | 32 | 0 → 0x14–0x2F running | *(hyp: current or capacity)* | |
+| | | | | 38 | 0 → 0x4F/0x50/0x59 running | *(hyp: fan rpm step)* | |
+| `E0` | 46 | 1C | 60 s | 14–15 | `40 00` idle / `52 02` running | | |
+| | | | | 17–18 (8.8) | outside air | r = 1.00 | |
+| | | | | 25 | outside air, whole °C | | |
+| | | | | 30, 36, 38, 42 | 0/small idle, large running | *(hyp: run counters / capacity)* | |
+| `6A` | 46 | 10 | on change | 11–16 | 3× (state, sub-state): `01 00` idle, `02 00` running, `01 09` right after stop, `01 07` during a possible defrost | *(hyp: per module; 09 = residual/oil return, 07 = defrost or oil return)* | `e9_page_6a::SUB_STATE_1`, `e9_page_6a::SUB_STATE_2`, `e9_page_6a::SUB_STATE_3` |
+| | | | | 17–19 | `20 10 10` / `20 20 20` | | |
+| | | | | 20–23 | `07 D0 14 C8` constant (= 2000, 5320) | | |
+| `6E` | 45 | 0C | 30 s | 11 | `00`/`0C` | | |
+| | | | | 12–13 | `14 30` / `94 10` | | |
+| | | | | 26–36 | 6× `00 80` / `80 00` | *(hyp: flags for 6 zones/groups)* | |
+| `68` | 17 | 08 | 5–10 min | 10–15 | `01 01 11 11 11 00` constant | *(hyp: configuration)* | |
+| `E6` | 36 | 1C | at hh:m5:04 | 11–12 | clock: hours, minutes | `13 23` = 19:35, `14 05` = 20:05 | `e9_page_e6::HOUR`, `e9_page_e6::MINUTE` |
+| | | | | 13–30 | `10 20 00 00 00 12 3A 71 21 00 60 08 58 C0 07 C0 B4 04` constant | | |
+| `2F` | 8 | 08/0C/10 | 2 min | 6 | `01` constant. Comes as 3 frames with b3 08, 0C and 10 | *(hyp: heartbeat per device)* | |
+| `6D` | 32 | 10 | seen once | 10–11 | `01 81`, bytes 12–30 all `00` | see below | |
 
 Page `6D` was seen once in about 114,000 frames (2026-11-16):
 `E9 00 FF 10 1A | 6D 6D 67 C0 18 01 81 00 … 00 | 3C`. After the system ID come `01`
@@ -508,16 +517,16 @@ Each command is answered with an `06` ACK within 2 ms.
 
 ### `40` operation command
 
-| payload idx | meaning | confidence |
-|-------------|---------|------------|
-| 0 | `40` = operation command | confirmed |
-| 1 | power: `00` no change, `02` off, `03` on (bit 1 = valid, bit 0 = on) | confirmed |
-| 2 | mode: `00` no change, `0x10 \| mode`, see [mode codes](#mode-codes) | confirmed for fan, heat, cool |
-| 3 | sent with the mode: `00` fan, `01` heat, `02` cool and auto, `06` setpoint only | *(hyp: which setpoint applies, heating or cooling; P1P2 also has separate `Setpoint_Heating`/`Setpoint_Cooling`)* |
-| 6 | setpoint, whole °C (`00` = no change) | confirmed |
-| 7 | `80` when byte 6 is set | a valid flag: it is `80` for 20, 22 and 24 alike. Half degrees are untested. |
-| 10 | `80` in every command from the iTM and from us | *(hyp: "source = central")*; `00` in one command during iTM start-up |
-| 13 | `00`; `02` in one command during iTM start-up | |
+| payload idx | meaning | confidence | code |
+|-------------|---------|------------|------|
+| 0 | `40` = operation command | confirmed | |
+| 1 | power: `00` no change, `02` off, `03` on (bit 1 = valid, bit 0 = on) | confirmed | `a5_operation::POWER` |
+| 2 | mode: `00` no change, `0x10 \| mode`, see [mode codes](#mode-codes) | confirmed for fan, heat, cool | `a5_operation::MODE` |
+| 3 | sent with the mode: `00` fan, `01` heat, `02` cool and auto, `06` setpoint only | *(hyp: which setpoint applies, heating or cooling; P1P2 also has separate `Setpoint_Heating`/`Setpoint_Cooling`)* | `a5_operation::MODE_DETAIL` |
+| 6 | setpoint, whole °C (`00` = no change) | confirmed | `a5_operation::SETPOINT` |
+| 7 | `80` when byte 6 is set | a valid flag: it is `80` for 20, 22 and 24 alike. Half degrees are untested. | `a5_operation::SETPOINT_VALID` |
+| 10 | `80` in every command from the iTM and from us | *(hyp: "source = central")*; `00` in one command during iTM start-up | `a5_operation::SOURCE_FLAG` |
+| 13 | `00`; `02` in one command during iTM start-up | | |
 
 Examples:
 

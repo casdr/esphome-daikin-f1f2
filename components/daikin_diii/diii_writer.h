@@ -55,7 +55,8 @@ inline bool atmega_command_allowed(const std::string &cmd) {
 // setpoint) or 41 (fan). The indoor unit stores these settings in non-volatile
 // memory, which wears out (see docs/protocol.md, "Write budget").
 inline bool is_setting_command(const uint8_t *frame, size_t length) {
-  return length >= 6 && frame[0] == 0xA5 && (frame[5] == 0x40 || frame[5] == 0x41);
+  return length >= header::OVERHEAD && frame[header::CMD] == 0xA5 &&
+         (frame[header::PAYLOAD] == 0x40 || frame[header::PAYLOAD] == 0x41);
 }
 
 // Operation command 40 (power, mode, setpoint), without checksum:
@@ -74,18 +75,18 @@ inline size_t build_operation(uint8_t *frame, uint8_t src, uint8_t dst, bool hyd
                               uint8_t mode_byte, uint8_t mode_detail, uint8_t setpoint) {
   const size_t length = hydrobox ? HYDROBOX_OPERATION_LEN : OPERATION_LEN;
   for (size_t i = 0; i < length; i++) frame[i] = 0;
-  frame[0] = 0xA5;
-  frame[1] = src;
-  frame[2] = dst;
-  frame[3] = 0x14;
-  frame[4] = (uint8_t) (length - 5);
-  frame[5] = 0x40;
-  frame[6] = power_byte;
-  frame[7] = mode_byte;
-  frame[8] = mode_detail;
-  frame[11] = setpoint;
-  frame[12] = setpoint ? 0x80 : 0x00;
-  frame[15] = 0x80;
+  frame[header::CMD] = 0xA5;
+  frame[header::SRC] = src;
+  frame[header::DST] = dst;
+  frame[header::CLASS] = 0x14;
+  frame[header::PAYLOAD_LENGTH] = (uint8_t) (length - header::PAYLOAD);  // without checksum here
+  frame[header::PAYLOAD] = 0x40;
+  frame[a5_operation::POWER] = power_byte;
+  frame[a5_operation::MODE] = mode_byte;
+  frame[a5_operation::MODE_DETAIL] = mode_detail;
+  frame[a5_operation::SETPOINT] = setpoint;
+  frame[a5_operation::SETPOINT_VALID] = setpoint ? 0x80 : 0x00;
+  frame[a5_operation::SOURCE_FLAG] = 0x80;
   return length;
 }
 
@@ -276,10 +277,13 @@ class WriteQueue {
   // token from its destination's write budget.
   WriteResult enqueue(const uint8_t *frame, size_t length, uint32_t now_ms) {
     if (!this->enabled_) return WriteResult::DISABLED;
-    if (length < 5 || length >= MAX_FRAME || length != (size_t) 5 + frame[4]) return WriteResult::BAD_LENGTH;
-    if (frame[1] == ITM_ADDRESS) return WriteResult::ITM_SOURCE;
+    // frame without checksum: header + payload
+    if (length < header::PAYLOAD || length >= MAX_FRAME || length != header::PAYLOAD + frame[header::PAYLOAD_LENGTH])
+      return WriteResult::BAD_LENGTH;
+    if (frame[header::SRC] == ITM_ADDRESS) return WriteResult::ITM_SOURCE;
     if (this->queue_.size() >= MAX_QUEUE) return WriteResult::QUEUE_FULL;
-    if (is_setting_command(frame, length) && !this->budget_.take(frame[2], now_ms)) return WriteResult::BUDGET;
+    if (is_setting_command(frame, length) && !this->budget_.take(frame[header::DST], now_ms))
+      return WriteResult::BUDGET;
     char hex[2 * MAX_FRAME + 2];
     for (size_t i = 0; i < length; i++) snprintf(hex + 2 * i, 3, "%02X", frame[i]);
     snprintf(hex + 2 * length, 3, "%02X", frame_checksum(frame, length));
