@@ -40,6 +40,27 @@ daikin_diii:
   isp:
     mosi_pin: GPIO2
     miso_pin: GPIO0
+  # A Home Assistant notification for the first frame of each type the component
+  # doesn't know, while "Unknown frame notifications" is on (docs/debugging.md). Needs
+  # "Allow the device to perform Home Assistant actions" in the device's options in HA.
+  on_unknown_frame:
+    - if:
+        condition:
+          switch.is_on: unknown_frame_notifications
+        then:
+          - homeassistant.action:
+              action: persistent_notification.create
+              data:
+                title: "Daikin F1F2: unknown frame"
+                # one notification per frame type: command, length and, for E9, the page
+                notification_id: !lambda |-
+                  std::string id = "daikin_f1f2_" + frame.substr(0, 2) + "_" + std::to_string(frame.size() / 2);
+                  if (frame.substr(0, 2) == "E9" && frame.size() >= 12) id += "_" + frame.substr(10, 2);
+                  return id;
+                message: !lambda |-
+                  return "The bridge saw a frame type this component doesn't know yet:\n\n`" + frame +
+                         "`\n\nPlease report it, with what the system was doing at that moment: "
+                         "https://github.com/casdr/esphome-daikin-f1f2/issues/new?template=protocol.yml";
 
 sensor:
   - platform: daikin_diii
@@ -73,6 +94,16 @@ switch:
     # Off = read-only. Starts off until you turn it on, then keeps its state.
     write_enable: {name: Bus writes enabled, restore_mode: RESTORE_DEFAULT_OFF}
     atmega_programming: {name: ATmega programming}
+    # Every bus frame to the ESPHome log, for a bus log without MQTT (docs/debugging.md).
+    frame_logging: {name: Frame logging}
+  # Turns the notification for unknown frame types on (see on_unknown_frame above).
+  - platform: template
+    id: unknown_frame_notifications
+    name: Unknown frame notifications
+    icon: mdi:bell-alert-outline
+    entity_category: config
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
 
 button:
   - platform: daikin_diii

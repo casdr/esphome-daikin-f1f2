@@ -214,6 +214,62 @@ inline size_t parse_raw_line(const char *line, uint8_t *out, size_t capacity, fl
 }
 
 // b1_to_diii: 256-entry map from B1 index to DIII address (0xFF = unknown).
+// Frame types seen and described in docs/protocol.md, the same list as KNOWN and
+// KNOWN_E9 in tools/find_unknown.py (tests/test_tools.py checks they match).
+struct KnownFrame {
+  uint8_t cmd;
+  uint8_t length;
+};
+static const KnownFrame KNOWN_FRAMES[] = {
+    {0xF5, 22}, {0xF5, 23}, {0xF5, 31}, {0xF5, 37}, {0xB1, 46}, {0xB1, 34}, {0xB1, 28}, {0xB1, 33},
+    {0xA9, 24}, {0xA9, 16}, {0xE5, 12}, {0xFD, 11}, {0xFD, 12}, {0xA5, 12}, {0xA5, 26}, {0xA5, 35},
+    {0xF5, 8},  {0xF5, 10}, {0xF5, 27}, {0xF5, 33}, {0xAD, 26}, {0xA9, 46}, {0xBD, 12}, {0xBD, 26},
+    {0xA4, 26}, {0x06, 1},
+};
+// E9 pages: class byte (b3), length, page, and the sub-page (byte 11) of the 41 B
+// page E0 (0xFF = any)
+struct KnownE9 {
+  uint8_t b3;
+  uint8_t length;
+  uint8_t page;
+  uint8_t sub;
+};
+static const KnownE9 KNOWN_E9[] = {
+    {0x08, 8, 0x2F, 0xFF},  {0x0C, 8, 0x2F, 0xFF},  {0x10, 8, 0x2F, 0xFF},  {0x08, 17, 0x68, 0xFF},
+    {0x0C, 45, 0x6E, 0xFF}, {0x10, 44, 0x67, 0xFF}, {0x10, 46, 0x65, 0xFF}, {0x10, 46, 0x6A, 0xFF},
+    {0x1C, 36, 0xE6, 0xFF}, {0x1C, 46, 0xE0, 0xFF}, {0x10, 32, 0x6D, 0xFF}, {0x1C, 41, 0xE0, 0x02},
+    {0x1C, 41, 0xE0, 0x03}, {0x1C, 41, 0xE0, 0x12}, {0x1C, 41, 0xE0, 0x13},
+};
+
+// One number per frame type, for remembering which unknown types were reported:
+// cmd, length, and for E9 the page and the sub-page (41 B page E0) or class byte.
+inline uint32_t frame_signature(const uint8_t *frame, size_t length) {
+  uint32_t key = (uint32_t) frame[header::CMD] << 24 | (uint32_t) (length & 0xFF) << 16;
+  if (frame[header::CMD] == 0xE9 && length > header::PAYLOAD) {
+    const uint8_t page = frame[header::PAYLOAD];
+    const bool sub_page = page == 0xE0 && length == e9_page_e0::LENGTH;
+    key |= (uint32_t) page << 8 | (sub_page ? frame[e9_page_e0::SUB_PAGE] : frame[header::CLASS]);
+  }
+  return key;
+}
+
+// Whether the frame type is in the catalogue above. Call it on valid frames only.
+inline bool is_known_frame(const uint8_t *frame, size_t length) {
+  const uint8_t cmd = frame[header::CMD];
+  if (cmd == 0xE9) {
+    if (length <= header::PAYLOAD) return false;
+    const uint8_t page = frame[header::PAYLOAD];
+    const uint8_t sub = (page == 0xE0 && length == e9_page_e0::LENGTH) ? frame[e9_page_e0::SUB_PAGE] : 0xFF;
+    for (const auto &known : KNOWN_E9)
+      if (known.b3 == frame[header::CLASS] && known.length == length && known.page == page && known.sub == sub)
+        return true;
+    return false;
+  }
+  for (const auto &known : KNOWN_FRAMES)
+    if (known.cmd == cmd && known.length == length) return true;
+  return false;
+}
+
 inline void decode_frame(const uint8_t *frame, size_t length, const uint8_t *b1_to_diii, DecoderSink &sink) {
   if (!frame_valid(frame, length)) return;
   const uint8_t cmd = frame[header::CMD], src = frame[header::SRC];

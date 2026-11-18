@@ -188,12 +188,18 @@ F1F2 bus ── ATmega (P1P2Monitor) ──UART 250000── ESP8266 (ESPHome, d
 - With `raw_mqtt`, every frame is also published to MQTT in the stock P1P2MQTT format
   (`R` = bus frames, `E` = errors, `X` = frames this bridge wrote), so you can log the bus
   and use the tools in [tools/](tools).
+- *Frame logging* writes every frame to the ESPHome log instead, so you can make a bus log
+  without MQTT. *Unknown frame notifications* puts a notification in Home Assistant the
+  first time the bridge sees a frame type it doesn't know. See
+  [docs/debugging.md](docs/debugging.md).
 
 ## Known limitations
 
 - Worked out on one system: a VRV IV heat recovery outdoor unit (REYQ10T) with 16 indoor
   units in 7 groups, a hydrobox and an iTM. Other systems may use frame types or values
-  this component doesn't know. The component ignores them.
+  this component doesn't know. The component ignores them. If you have another Daikin
+  system, I'd like to help get it working: [docs/debugging.md](docs/debugging.md) shows how
+  to make a bus log and a survey for a *New system report*.
 - Several sensors are hypotheses: discharge temperature, compressor and fan steps,
   capacity, defrost. The protocol notes mark what is confirmed and what isn't.
 - Auto and dry can't be set: their command codes are untested.
@@ -225,6 +231,14 @@ make -C tests test
 - `decoder`: the C++ decoder against the Python reference over your own bus logs in
   [captures/](captures) (skipped when there are none).
 
+The tools have their own tests (Python 3.10 or newer, no packages needed): the log
+converter, the survey, and a check that the firmware's list of known frame types matches
+`tools/find_unknown.py`.
+
+```bash
+python3 -m unittest discover -s tests -p 'test_*.py'
+```
+
 `example.yaml` loads everything from GitHub. To build your local changes, write a copy
 that uses this checkout, with the hydrobox package turned on as well:
 
@@ -242,6 +256,8 @@ The Python tools for logging and analysing the bus are in [tools/](tools)
 | Script | What it does |
 | --- | --- |
 | `f1f2_log.py` | Log raw frames from MQTT to a TSV file, with notes typed on stdin. |
+| `esphome_log_to_tsv.py` | Turn an ESPHome log with *Frame logging* on into a TSV bus log. No dependencies. |
+| `survey.py` | Units, likely groups and B1 indexes, frame types and a packages list from a bus log. No dependencies. |
 | `f1f2_decode.py` | Decode a log or the live stream into a table per unit. |
 | `f1f2_experiment.py` | Change-and-restore experiments: Home Assistant service calls or raw frames, logged, with a restore at the end. |
 | `analyse_diff.py`, `analyse_e9.py`, `find_unknown.py` | Find changed bytes, outdoor-unit fields, and frame types not described yet. |
@@ -253,6 +269,11 @@ pipenv run python f1f2_decode.py ../captures/my-log.tsv
 
 Contributions are welcome, especially bus logs from other systems and anything that
 confirms or corrects a hypothesis in [docs/protocol.md](docs/protocol.md).
+
+Running a different Daikin system? I'm happy to help add support for it. Make a bus log
+and a survey as in [docs/debugging.md](docs/debugging.md) and open a
+[New system report](https://github.com/casdr/esphome-daikin-f1f2/issues/new?template=new_system.yml);
+we can work out the rest together in the issue.
 
 ## Credits
 

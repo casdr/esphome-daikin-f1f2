@@ -1,0 +1,41 @@
+name: New system report
+description: A Daikin system this component doesn't fully support yet, with a bus log and survey (docs/debugging.md).
+labels: [new-system]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping support more systems. [docs/debugging.md](https://github.com/casdr/esphome-daikin-f1f2/blob/main/docs/debugging.md)
+        shows how to make a bus log without MQTT and run the survey.
+  - type: input
+    id: outdoor
+    attributes:
+      label: Outdoor unit
+      description: Model from the nameplate, e.g. REYQ10T7Y1B.
+    validations:
+      required: true
+  - type: textarea
+    id: indoor
+    attributes:
+      label: Indoor units and controllers
+      description: Indoor unit types (cassette, ducted, wall, hydrobox, ...), how many, and any central controller (iTM, ITC, BACnet gateway) or wired remotes.
+    validations:
+      required: true
+  - type: textarea
+    id: survey
+    attributes:
+      label: Survey
+      description: The output of `python3 tools/survey.py bus.tsv`.
+      render: markdown
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Bus log
+      description: Attach bus.tsv (zip it if it's large). Note what happened during the log and when, for example "08:10 switched 1-03 on from its remote".
+  - type: textarea
+    id: wrong
+    attributes:
+      label: What doesn't work
+      description: Entities that stay empty or show wrong values, commands that don't arrive, unknown frame notifications.

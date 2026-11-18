@@ -511,6 +511,37 @@ static void test_group_action() {
   CHECK(group_action(1, 0x00, 1, true, 20, 21) == Action::UNKNOWN);
 }
 
+static void test_known_frames() {
+  // real frames from the test system: F5 23 B status and E9 page 65 are known
+  auto status = hex("F500FF1C1182610100000000000013" "1A370000800200" "0A");
+  CHECK(is_known_frame(status.data(), status.size()));
+  auto page65 = hex("E900FF1028656D67C0180100001000094F095D00000D00000000000816080014000000000226000000001000006A");
+  CHECK(page65.size() == 46);
+  CHECK(is_known_frame(page65.data(), page65.size()));
+  // an F5 frame of a length never seen, and an E9 page that isn't in the catalogue
+  std::vector<uint8_t> odd(24, 0x00);
+  odd[0] = 0xF5;
+  CHECK(!is_known_frame(odd.data(), odd.size()));
+  auto page99 = page65;
+  page99[5] = 0x99;
+  CHECK(!is_known_frame(page99.data(), page99.size()));
+  // page E0 41 B is known per sub-page: 12 yes, 22 no
+  std::vector<uint8_t> e0(41, 0x00);
+  e0[0] = 0xE9;
+  e0[3] = 0x1C;
+  e0[5] = 0xE0;
+  e0[11] = 0x12;
+  CHECK(is_known_frame(e0.data(), e0.size()));
+  e0[11] = 0x22;
+  CHECK(!is_known_frame(e0.data(), e0.size()));
+  // the signature separates frame types and ignores the content
+  auto other_status = status;
+  other_status[14] = 0x15;
+  CHECK(frame_signature(status.data(), status.size()) == frame_signature(other_status.data(), other_status.size()));
+  CHECK(frame_signature(page65.data(), page65.size()) != frame_signature(page99.data(), page99.size()));
+  CHECK(frame_signature(odd.data(), odd.size()) != frame_signature(status.data(), status.size()));
+}
+
 int main() {
   test_guards();
   test_checksum_and_spacing();
@@ -525,6 +556,7 @@ int main() {
   test_outlet_pair();
   test_operation();
   test_group_action();
+  test_known_frames();
   if (failures) {
     std::printf("%d check(s) failed\n", failures);
     return 1;

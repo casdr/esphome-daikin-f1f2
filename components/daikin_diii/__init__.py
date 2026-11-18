@@ -5,9 +5,9 @@ baud), decodes frames (see docs/protocol.md) and can write raw frames.
 """
 import esphome.codegen as cg
 import esphome.config_validation as cv
-from esphome import pins
+from esphome import automation, pins
 from esphome.components import uart
-from esphome.const import CONF_ID
+from esphome.const import CONF_ID, CONF_TRIGGER_ID
 
 CODEOWNERS = []
 DEPENDENCIES = ["uart", "network"]
@@ -24,9 +24,11 @@ CONF_B1_INDEX = "b1_index"
 CONF_GROUP = "group"
 CONF_UNIT = "unit"
 CONF_HYDROBOX = "hydrobox"
+CONF_ON_UNKNOWN_FRAME = "on_unknown_frame"
 
 daikin_diii_ns = cg.esphome_ns.namespace("daikin_diii")
 DaikinDIII = daikin_diii_ns.class_("DaikinDIII", cg.Component, uart.UARTDevice)
+UnknownFrameTrigger = daikin_diii_ns.class_("UnknownFrameTrigger", automation.Trigger.template(cg.std_string))
 
 UNIT_SCHEMA = cv.Schema(
     {
@@ -54,6 +56,10 @@ CONFIG_SCHEMA = cv.All(
     cv.Schema(
         {
             cv.GenerateID(): cv.declare_id(DaikinDIII),
+            # runs with `frame` (hex) for the first frame of each unknown type since boot
+            cv.Optional(CONF_ON_UNKNOWN_FRAME): automation.validate_automation(
+                {cv.GenerateID(CONF_TRIGGER_ID): cv.declare_id(UnknownFrameTrigger)}
+            ),
             cv.Optional(CONF_RESET_PIN): pins.internal_gpio_output_pin_schema,
             cv.Optional(CONF_SERIAL_ENABLE_PIN): pins.gpio_output_pin_schema,
             cv.Optional(CONF_RAW_MQTT): cv.Schema(
@@ -125,3 +131,6 @@ async def to_code(config):
     for unit in config[CONF_UNITS]:
         addr = unit[CONF_ADDRESS]
         cg.add(var.add_unit(addr, unit.get(CONF_B1_INDEX, 0xFF), unit.get(CONF_GROUP, addr), unit[CONF_HYDROBOX]))
+    for conf in config.get(CONF_ON_UNKNOWN_FRAME, []):
+        trigger = cg.new_Pvariable(conf[CONF_TRIGGER_ID], var)
+        await automation.build_automation(trigger, [(cg.std_string, "frame")], conf)

@@ -17,6 +17,7 @@ namespace esphome {
 namespace daikin_diii {
 
 static const char *const TAG = "daikin_diii";
+static const char *const FRAME_TAG = "daikin_diii.frame";  // tools/esphome_log_to_tsv.py reads it
 static const char *const MAGIC = "1P2P";
 
 void DaikinDIII::add_unit(uint8_t addr, uint8_t b1_index, uint8_t group, bool hydrobox) {
@@ -295,7 +296,38 @@ void DaikinDIII::set_raw_enabled(bool enabled) {
   ESP_LOGI(TAG, "Raw logging %s", enabled ? "enabled" : "disabled");
 }
 
+void DaikinDIII::check_known_(const uint8_t *frame, size_t length) {
+  if (::diii::is_known_frame(frame, length)) return;
+  const uint32_t key = ::diii::frame_signature(frame, length);
+  for (uint32_t reported : this->unknown_reported_)
+    if (reported == key) return;
+  if (this->unknown_reported_.size() >= MAX_UNKNOWN_REPORTED) return;
+  this->unknown_reported_.push_back(key);
+  std::string hex;
+  char hex_byte[3];
+  for (size_t i = 0; i < length; i++) {
+    snprintf(hex_byte, sizeof(hex_byte), "%02X", frame[i]);
+    hex += hex_byte;
+  }
+  ESP_LOGW(TAG, "Unknown frame type (first one since boot): %s", hex.c_str());
+  this->unknown_frame_callback_.call(hex);
+}
+
+void DaikinDIII::set_frame_log_enabled(bool enabled) {
+  if (enabled == this->frame_log_enabled_) return;
+  this->frame_log_enabled_ = enabled;
+  ESP_LOGI(TAG, "Frame logging %s", enabled ? "enabled" : "disabled");
+}
+
 void DaikinDIII::publish_raw_(char kind, const char *payload) {
+  if (this->frame_log_enabled_) {
+    // R and E lines start with their kind already; X (own writes) is the bare frame
+    if (payload[0] == kind) {
+      ESP_LOGI(FRAME_TAG, "%s", payload);
+    } else {
+      ESP_LOGI(FRAME_TAG, "%c %s", kind, payload);
+    }
+  }
   if (!this->raw_enabled_) return;
 #ifdef DAIKIN_DIII_RAW_MQTT
   if (this->mqtt_configured_) {
@@ -383,6 +415,7 @@ void DaikinDIII::handle_line_(const char *line) {
       if (length == 1) return;  // ACK (06) etc.
       if (::diii::frame_valid(frame, length)) {
         this->frames_ok_++;
+        this->check_known_(frame, length);
         // our own frame read back from the bus: only now is it written
         if (frame[::diii::header::CMD] == 0xA5 && this->writer_.on_bus_frame(frame, length)) {
           std::string hex;

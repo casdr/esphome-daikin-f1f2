@@ -26,6 +26,8 @@ jobs:
         run: make -C tests test
       - name: Tools compile
         run: python -m py_compile tools/*.py tests/*.py
+      - name: Tool tests (log converter, survey, frame catalogue)
+        run: python -m unittest discover -s tests -p 'test_*.py' -v
 
   esphome:
     name: ESPHome build

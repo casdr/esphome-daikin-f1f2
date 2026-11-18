@@ -1,10 +1,12 @@
 #pragma once
 
 #include <cmath>
+#include <functional>
 #include <string>
 #include <vector>
 
 #include "esphome/components/uart/uart.h"
+#include "esphome/core/automation.h"
 #include "esphome/core/component.h"
 #include "esphome/core/hal.h"
 #include "esphome/core/preferences.h"
@@ -16,7 +18,6 @@
 #endif
 
 #ifdef DAIKIN_DIII_ISP
-#include <functional>
 #include <ESP8266WiFi.h>
 #include "avr_isp.h"
 #endif
@@ -134,6 +135,14 @@ class DaikinDIII : public Component, public uart::UARTDevice, public DecoderSink
   void set_write_enabled(bool enabled) { this->writer_.set_enabled(enabled); }
   // Raw frame stream (MQTT) on/off. A marker line is published at each change.
   void set_raw_enabled(bool enabled);
+  // Frame logging: every raw line (R/E/X, as on MQTT) also goes to the ESPHome log
+  // under the tag daikin_diii.frame, for a bus log without MQTT (docs/debugging.md).
+  void set_frame_log_enabled(bool enabled);
+  // Called once per boot for every frame type that isn't in the catalogue
+  // (is_known_frame in diii_decoder.h), with the frame as hex. on_unknown_frame in YAML.
+  void add_on_unknown_frame_callback(std::function<void(const std::string &)> &&callback) {
+    this->unknown_frame_callback_.add(std::move(callback));
+  }
   bool is_write_enabled() const { return this->writer_.enabled(); }
   // frame without checksum, e.g. "A5300714144003..."; checksum is appended and
   // the frame is queued (min. 1.5 s spacing, retried when the ATmega refuses it
@@ -254,6 +263,12 @@ class DaikinDIII : public Component, public uart::UARTDevice, public DecoderSink
   size_t line_len_{0};
   bool ignore_next_line_{true};
   bool raw_enabled_{true};
+  bool frame_log_enabled_{false};
+  // frame types already reported as unknown (frame_signature), at most MAX_UNKNOWN_REPORTED
+  static const size_t MAX_UNKNOWN_REPORTED = 32;
+  std::vector<uint32_t> unknown_reported_;
+  CallbackManager<void(const std::string &)> unknown_frame_callback_;
+  void check_known_(const uint8_t *frame, size_t length);
   uint32_t frames_ok_{0};
   uint32_t frames_err_{0};
 
@@ -269,6 +284,15 @@ class DaikinDIII : public Component, public uart::UARTDevice, public DecoderSink
 #ifdef USE_TEXT_SENSOR
   text_sensor::TextSensor *system_text_[(int) SystemText::COUNT] = {};
 #endif
+};
+
+// on_unknown_frame: runs with `frame` (hex) the first time a frame type unknown to the
+// component is seen since boot.
+class UnknownFrameTrigger : public Trigger<std::string> {
+ public:
+  explicit UnknownFrameTrigger(DaikinDIII *parent) {
+    parent->add_on_unknown_frame_callback([this](const std::string &frame) { this->trigger(frame); });
+  }
 };
 
 }  // namespace daikin_diii

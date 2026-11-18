@@ -55,6 +55,7 @@ daikin_diii:
 | `write_budget` | `{burst: 30, per_year: 7000}` | Commands per group this bridge may send: `burst` at once, refilled at `per_year` per year. `burst: 0` turns the budget off. See [writing.md](writing.md). |
 | `isp` | | Optional ATmega programming, see [atmega.md](atmega.md). Keys: `mosi_pin`, `miso_pin`, `port` (328), `window` (10 min). |
 | `raw_mqtt` | | Optional raw frame stream, see below. |
+| `on_unknown_frame` | | Automation, run with `frame` (hex) for the first frame of each type the component doesn't know, once per boot. `bridge.yaml` uses it for a Home Assistant notification, see [debugging.md](debugging.md#unknown-frame-notifications). |
 
 ### Units
 
@@ -71,9 +72,11 @@ are ignored.
 
 ## Finding your layout
 
-You need a bus log for this. Turn on `raw_mqtt` and log for a while with
+You need a bus log for this. The easiest way is *Frame logging*, which needs no MQTT: see
+[debugging.md](debugging.md). `tools/survey.py` then lists the addresses, roles, likely
+groups and B1 indexes, and prints a packages list. You can also log with `raw_mqtt` and
 [`tools/f1f2_log.py`](../tools/f1f2_log.py), or use a log from the stock P1P2MQTT firmware
-(the same format).
+(the same format). The sections below explain what the survey looks at.
 
 ### Addresses
 
@@ -140,7 +143,7 @@ indoor unit; without it they're system-wide.
 | `sensor` (diagnostic) | `frames_ok`, `frames_error`, `write_queue`, `writes_lost` |
 | `binary_sensor` | `compressor_running`, `defrost`, `raw_mqtt_connected` |
 | `text_sensor` | `clock`, `last_write` |
-| `switch` | `write_enable`, `raw_logging`, `atmega_programming` |
+| `switch` | `write_enable`, `raw_logging`, `frame_logging`, `atmega_programming` |
 | `button` | `reset_atmega` |
 
 Modules 1 and 2 are the two blocks of outdoor data the system reports; on the test system's

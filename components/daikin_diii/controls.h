@@ -59,6 +59,15 @@ class RawLoggingSwitch : public RestoringSwitch, public Parented<DaikinDIII> {
     this->publish_state(state);
   }
 };
+
+// Frame logging to the ESPHome log (no MQTT needed). Always off after a restart.
+class FrameLoggingSwitch : public RestoringSwitch, public Parented<DaikinDIII> {
+ protected:
+  void write_state(bool state) override {
+    this->parent_->set_frame_log_enabled(state);
+    this->publish_state(state);
+  }
+};
 #endif
 
 #ifdef USE_BUTTON
