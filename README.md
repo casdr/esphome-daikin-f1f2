@@ -53,6 +53,23 @@ Switches: *Bus writes enabled* (off = read-only), *ATmega programming* (see
 [docs/atmega.md](docs/atmega.md)) and *Raw logging* (only with `raw_mqtt`). A button
 restarts the ATmega.
 
+## Screenshots
+
+A group master in Home Assistant: the climate, airflow and outlet selects, the group's
+sensors and the write budget.
+
+![Home Assistant device page of a group master](docs/images/device.png)
+
+A dashboard built from these entities, with a climate and a temperature history per
+group. The dashboard itself isn't part of this repository.
+
+![Home Assistant dashboard with a climate card per group](docs/images/dashboard.png)
+
+The system view of the same dashboard: outdoor unit temperatures and compressor state,
+and the bridge's switches and bus diagnostics.
+
+![Home Assistant dashboard with outdoor unit and bridge entities](docs/images/system.png)
+
 ## Hardware
 
 A [P1P2MQTT bridge](https://github.com/Arnold-n/P1P2MQTT) v1.2 or v1.3 (ESP8266, ATmega328P
