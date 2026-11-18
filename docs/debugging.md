@@ -87,7 +87,8 @@ restart that it sees a type that isn't on that list, it logs a warning:
 ```
 
 With **Unknown frame notifications** on, it also creates a notification in Home Assistant
-with the frame and a link to report it. For that, Home Assistant must allow the device to
+with the frame and a link that opens a *Protocol finding* issue with the frame type, the
+frame and the ESPHome version already filled in. For that, Home Assistant must allow the device to
 perform actions: Settings > Devices & services > ESPHome > your bridge > *Configure* >
 *Allow the device to perform Home Assistant actions*.
 

@@ -57,10 +57,34 @@ daikin_diii:
               data:
                 title: "Daikin F1F2: unknown frame"
                 notification_id: !lambda 'return "daikin_f1f2_unknown_" + frame_type;'
+                # The link opens the "Protocol finding" issue form with the title, the frame and
+                # what the bridge knows filled in (query parameters named after the form's field
+                # ids, .github/ISSUE_TEMPLATE/protocol.yml); the reporter adds the system and the moment.
                 message: !lambda |-
-                  return "The bridge saw a frame type this component doesn't know yet (" + frame_type +
-                         "):\n\n`" + frame + "`\n\nPlease report it, with what the system was doing "
-                         "at that moment: https://github.com/casdr/esphome-daikin-f1f2/issues/new?template=protocol.yml";
+                  auto encode = [](const std::string &text) {
+                    std::string out;
+                    char escaped[4];
+                    for (unsigned char c : text) {
+                      if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') ||
+                          c == '-' || c == '_' || c == '.' || c == '~') {
+                        out += (char) c;
+                      } else {
+                        snprintf(escaped, sizeof(escaped), "%%%02X", c);
+                        out += escaped;
+                      }
+                    }
+                    return out;
+                  };
+                  const std::string bytes = std::to_string(frame.size() / 2);
+                  const std::string finding = "Unknown frame type " + frame_type + " (" + bytes +
+                      " bytes, checksum included), reported by the bridge's unknown frame notification.\n\n"
+                      "Bridge: ESPHome " ESPHOME_VERSION ", device " + App.get_name().str() + ".";
+                  const std::string url = "https://github.com/casdr/esphome-daikin-f1f2/issues/new?template=protocol.yml"
+                      "&title=" + encode("Unknown frame type " + frame_type) + "&finding=" + encode(finding) +
+                      "&frames=" + encode(frame);
+                  return "The bridge saw a frame type this component doesn't know yet (" + frame_type + ", " + bytes +
+                         " bytes):\n\n`" + frame + "`\n\n[Report it on GitHub](" + url + "): the form opens with this "
+                         "frame filled in. Add your Daikin system and what it was doing at that moment.";
 
 sensor:
   - platform: daikin_diii
