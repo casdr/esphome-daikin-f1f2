@@ -542,6 +542,22 @@ static void test_known_frames() {
   CHECK(frame_signature(odd.data(), odd.size()) != frame_signature(status.data(), status.size()));
 }
 
+static void test_bus_clock() {
+  BusClock clock;
+  CHECK(clock.minute_of_day(0) == -1);  // nothing broadcast yet
+  // broadcast 23:55 at t = 1000 ms (about 23:55:04 on the VRV clock)
+  clock.set(23, 55, 1000);
+  CHECK(clock.minute_of_day(1000) == 23 * 60 + 55);
+  CHECK(clock.minute_of_day(1000 + 55000) == 23 * 60 + 55);  // 23:55:59
+  CHECK(clock.minute_of_day(1000 + 56000) == 23 * 60 + 56);  // 23:56:00
+  CHECK(clock.minute_of_day(1000 + 5 * 60000) == 0);         // past midnight: 00:00:04
+  CHECK(clock.minute_of_day(1000 + 15 * 60000) == 10);       // still within the run-on
+  CHECK(clock.minute_of_day(1000 + 15 * 60000 + 1) == -1);   // no broadcast for too long
+  // a new broadcast starts again; millis() wrapping in between is fine
+  clock.set(8, 5, 0xFFFFF000u);
+  CHECK(clock.minute_of_day(0xFFFFF000u + 60000) == 8 * 60 + 6);
+}
+
 int main() {
   test_guards();
   test_checksum_and_spacing();
@@ -557,6 +573,7 @@ int main() {
   test_operation();
   test_group_action();
   test_known_frames();
+  test_bus_clock();
   if (failures) {
     std::printf("%d check(s) failed\n", failures);
     return 1;

@@ -220,6 +220,10 @@ class DaikinDIII : public Component, public uart::UARTDevice, public DecoderSink
   uint32_t raw_published_{0};
   uint32_t raw_dropped_{0};
   uint32_t last_stats_ms_{0};
+  // the VRV clock, run on between its broadcasts (BusClock in diii_decoder.h)
+  ::diii::BusClock clock_;
+  int clock_published_{-1};  // minute of day last published, -1 none
+  void publish_clock_(uint32_t now_ms);
 #ifdef DAIKIN_DIII_RAW_MQTT
   AsyncMqttClient mqtt_;
   bool mqtt_configured_{false};

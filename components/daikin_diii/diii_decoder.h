@@ -100,6 +100,35 @@ static const size_t HOUR = 11;
 static const size_t MINUTE = 12;
 }  // namespace e9_page_e6
 
+// The VRV clock (E9 page E6) comes every 10 minutes, at about hh:m5:04 by that clock.
+// BusClock runs it on between broadcasts, so the time can be shown every minute. It
+// stops after MAX_RUN_ON_MS without a broadcast: then the bus clock counts as lost,
+// and a clock that stops changing is the sign of that.
+class BusClock {
+ public:
+  static const uint32_t MAX_RUN_ON_MS = 15UL * 60 * 1000;  // one missed broadcast and some margin
+  static const uint32_t SECONDS_AT_BROADCAST = 4;          // the broadcast comes 4 s into the minute
+
+  void set(uint8_t hour, uint8_t minute, uint32_t now_ms) {
+    this->minute_of_day_ = (uint16_t) (hour * 60 + minute);
+    this->set_ms_ = now_ms;
+    this->valid_ = true;
+  }
+  // Minutes since midnight now, or -1 before the first broadcast or once it's too old.
+  int minute_of_day(uint32_t now_ms) const {
+    if (!this->valid_) return -1;
+    const uint32_t elapsed_ms = now_ms - this->set_ms_;  // wraps correctly with millis()
+    if (elapsed_ms > MAX_RUN_ON_MS) return -1;
+    const uint32_t seconds = SECONDS_AT_BROADCAST + elapsed_ms / 1000;
+    return (int) ((this->minute_of_day_ + seconds / 60) % (24 * 60));
+  }
+
+ protected:
+  uint16_t minute_of_day_{0};
+  uint32_t set_ms_{0};
+  bool valid_{false};
+};
+
 // A5 operation command (payload[0] 40), as built in diii_writer.h
 namespace a5_operation {
 static const size_t POWER = 6;

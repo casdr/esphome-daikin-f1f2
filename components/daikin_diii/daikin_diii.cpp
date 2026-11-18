@@ -374,6 +374,7 @@ void DaikinDIII::loop() {
 #endif
   this->process_queue_();
   uint32_t now_ms = millis();
+  this->publish_clock_(now_ms);
   if (now_ms - this->last_diag_ms_ > 30000) {
     this->last_diag_ms_ = now_ms;
     this->publish_diagnostics_();
@@ -652,12 +653,22 @@ void DaikinDIII::on_compressor(uint8_t state) {
 }
 
 void DaikinDIII::on_clock(uint8_t hour, uint8_t minute) {
+  this->clock_.set(hour, minute, millis());
+  this->clock_published_ = -1;  // publish the broadcast value even when it equals the run-on time
+  this->publish_clock_(millis());
+}
+
+void DaikinDIII::publish_clock_(uint32_t now_ms) {
 #ifdef USE_TEXT_SENSOR
+  const int minute_of_day = this->clock_.minute_of_day(now_ms);
+  // unknown, or no broadcast for too long: leave the last value, so it goes stale
+  if (minute_of_day < 0 || minute_of_day == this->clock_published_) return;
+  this->clock_published_ = minute_of_day;
   auto *sensor = this->system_text_[(int) SystemText::CLOCK];
   if (sensor != nullptr) {
     char clock_text[8];
-    snprintf(clock_text, sizeof(clock_text), "%02u:%02u", hour, minute);
-    sensor->publish_state(clock_text);
+    snprintf(clock_text, sizeof(clock_text), "%02d:%02d", minute_of_day / 60, minute_of_day % 60);
+    if (!sensor->has_state() || sensor->get_state() != clock_text) sensor->publish_state(clock_text);
   }
 #endif
 }

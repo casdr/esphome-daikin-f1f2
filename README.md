@@ -42,7 +42,7 @@ For the system:
 | **Discharge temperature** per outdoor module | Compressor discharge *(hypothesis)*. |
 | **Compressor** | Running or not. |
 | **Defrost or oil return** | An outdoor module in sub-state `07`, a recurring 9-minute operation that looks more like oil return than defrost *(hypothesis)*. |
-| **System clock** | The VRV's own clock. |
+| **System clock** | The VRV's own clock. The bus sends it every 10 minutes; the bridge counts the minutes in between, and stops counting when no update has come for 15 minutes, so a lost bus shows as a clock that stands still. |
 | Diagnostics | Bus frames OK / with errors, write queue, last bus command, compressor and fan steps and a capacity value (raw, partly guessed). |
 
 A Daikin hydrobox on the same bus gets its temperature, power, heat demand and a *heat
