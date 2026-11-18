@@ -24,7 +24,7 @@ class RestoringSwitch : public switch_::Switch, public Component {
   float get_setup_priority() const override { return setup_priority::HARDWARE; }
 };
 
-// Master switch for all bus writes (default on, keeps its state across restarts).
+// Master switch for all bus writes (off until turned on, then keeps its state across restarts).
 class WriteEnableSwitch : public RestoringSwitch, public Parented<DaikinDIII> {
  protected:
   void write_state(bool state) override {

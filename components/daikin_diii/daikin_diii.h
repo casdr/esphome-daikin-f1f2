@@ -138,9 +138,11 @@ class DaikinDIII : public Component, public uart::UARTDevice, public DecoderSink
   // Frame logging: every raw line (R/E/X, as on MQTT) also goes to the ESPHome log
   // under the tag daikin_diii.frame, for a bus log without MQTT (docs/debugging.md).
   void set_frame_log_enabled(bool enabled);
-  // Called once per boot for every frame type that isn't in the catalogue
-  // (is_known_frame in diii_decoder.h), with the frame as hex. on_unknown_frame in YAML.
-  void add_on_unknown_frame_callback(std::function<void(const std::string &)> &&callback) {
+  // Called for a frame type that isn't in the catalogue (is_known_frame in
+  // diii_decoder.h): the first time it's seen, then at most once an hour while it keeps
+  // coming, so a notification missed while HA was away comes through later. Gets the frame
+  // as hex and its type (e.g. "F5_25", "E9_41_E0_22"). on_unknown_frame in YAML.
+  void add_on_unknown_frame_callback(std::function<void(const std::string &, const std::string &)> &&callback) {
     this->unknown_frame_callback_.add(std::move(callback));
   }
   bool is_write_enabled() const { return this->writer_.enabled(); }
@@ -268,10 +270,15 @@ class DaikinDIII : public Component, public uart::UARTDevice, public DecoderSink
   bool ignore_next_line_{true};
   bool raw_enabled_{true};
   bool frame_log_enabled_{false};
-  // frame types already reported as unknown (frame_signature), at most MAX_UNKNOWN_REPORTED
+  // frame types reported as unknown (frame_signature) and when, at most MAX_UNKNOWN_REPORTED
   static const size_t MAX_UNKNOWN_REPORTED = 32;
-  std::vector<uint32_t> unknown_reported_;
-  CallbackManager<void(const std::string &)> unknown_frame_callback_;
+  static const uint32_t UNKNOWN_REPEAT_MS = 3600UL * 1000;
+  struct UnknownReported {
+    uint32_t key;
+    uint32_t last_ms;
+  };
+  std::vector<UnknownReported> unknown_reported_;
+  CallbackManager<void(const std::string &, const std::string &)> unknown_frame_callback_;
   void check_known_(const uint8_t *frame, size_t length);
   uint32_t frames_ok_{0};
   uint32_t frames_err_{0};
@@ -290,12 +297,13 @@ class DaikinDIII : public Component, public uart::UARTDevice, public DecoderSink
 #endif
 };
 
-// on_unknown_frame: runs with `frame` (hex) the first time a frame type unknown to the
-// component is seen since boot.
-class UnknownFrameTrigger : public Trigger<std::string> {
+// on_unknown_frame: runs with `frame` (hex) and `frame_type` for a frame type unknown to
+// the component, see add_on_unknown_frame_callback.
+class UnknownFrameTrigger : public Trigger<std::string, std::string> {
  public:
   explicit UnknownFrameTrigger(DaikinDIII *parent) {
-    parent->add_on_unknown_frame_callback([this](const std::string &frame) { this->trigger(frame); });
+    parent->add_on_unknown_frame_callback(
+        [this](const std::string &frame, const std::string &frame_type) { this->trigger(frame, frame_type); });
   }
 };
 

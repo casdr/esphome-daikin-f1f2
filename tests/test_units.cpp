@@ -558,6 +558,28 @@ static void test_bus_clock() {
   CHECK(clock.minute_of_day(0xFFFFF000u + 60000) == 8 * 60 + 6);
 }
 
+static void test_budget_many_groups() {
+  WriteBudget budget;
+  budget.configure(3, 1000);
+  // reading a budget never adds an entry
+  for (int dst = 0; dst < 200; dst++) CHECK(budget.available((uint8_t) dst, 0) == 3);
+  CHECK(budget.size() == 0);
+  // a full DIII-NET line: 64 destinations, each with one command taken
+  for (int dst = 0; dst < 64; dst++) CHECK(budget.take((uint8_t) dst, 0));
+  CHECK(budget.size() == 64);
+  // a 65th while all 64 are below their burst: refused, the others are kept
+  CHECK(!budget.take(0x80, 0));
+  CHECK(budget.available(0x05, 0) == 2);
+  // once a group is full again its entry can go, and the new one gets a place
+  CHECK(budget.take(0x80, 1000));  // every entry refilled to 3 by now
+  CHECK(budget.available(0x80, 1000) == 2);
+  CHECK(budget.size() <= 64);
+  // refill_all brings the saved counts up to date
+  CHECK(budget.take(0x81, 1000));
+  budget.refill_all(5000);
+  for (size_t i = 0; i < budget.size(); i++) CHECK(budget.tokens_at(i) == 3);
+}
+
 int main() {
   test_guards();
   test_checksum_and_spacing();
@@ -574,6 +596,7 @@ int main() {
   test_group_action();
   test_known_frames();
   test_bus_clock();
+  test_budget_many_groups();
   if (failures) {
     std::printf("%d check(s) failed\n", failures);
     return 1;

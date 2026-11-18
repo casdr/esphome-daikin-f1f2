@@ -28,7 +28,9 @@ CONF_ON_UNKNOWN_FRAME = "on_unknown_frame"
 
 daikin_diii_ns = cg.esphome_ns.namespace("daikin_diii")
 DaikinDIII = daikin_diii_ns.class_("DaikinDIII", cg.Component, uart.UARTDevice)
-UnknownFrameTrigger = daikin_diii_ns.class_("UnknownFrameTrigger", automation.Trigger.template(cg.std_string))
+UnknownFrameTrigger = daikin_diii_ns.class_(
+    "UnknownFrameTrigger", automation.Trigger.template(cg.std_string, cg.std_string)
+)
 
 UNIT_SCHEMA = cv.Schema(
     {
@@ -56,7 +58,8 @@ CONFIG_SCHEMA = cv.All(
     cv.Schema(
         {
             cv.GenerateID(): cv.declare_id(DaikinDIII),
-            # runs with `frame` (hex) for the first frame of each unknown type since boot
+            # runs with `frame` (hex) and `frame_type` for an unknown frame type: the first time,
+            # then at most once an hour while it keeps coming
             cv.Optional(CONF_ON_UNKNOWN_FRAME): automation.validate_automation(
                 {cv.GenerateID(CONF_TRIGGER_ID): cv.declare_id(UnknownFrameTrigger)}
             ),
@@ -90,8 +93,8 @@ CONFIG_SCHEMA = cv.All(
             # (Modbus Interface DIII design guide). burst: 0 disables the budget.
             cv.Optional("write_budget", default={}): cv.Schema(
                 {
-                    cv.Optional("burst", default=30): cv.int_range(min=0, max=1000),
-                    cv.Optional("per_year", default=7000): cv.int_range(min=1, max=1000000),
+                    cv.Optional("burst", default=30): cv.int_range(min=0, max=255),  # saved as one byte
+                    cv.Optional("per_year", default=7000): cv.int_range(min=8, max=1000000),  # below 8 the refill period overflows 32 bits
                 }
             ),
             cv.Required(CONF_UNITS): cv.ensure_list(UNIT_SCHEMA),
@@ -133,4 +136,4 @@ async def to_code(config):
         cg.add(var.add_unit(addr, unit.get(CONF_B1_INDEX, 0xFF), unit.get(CONF_GROUP, addr), unit[CONF_HYDROBOX]))
     for conf in config.get(CONF_ON_UNKNOWN_FRAME, []):
         trigger = cg.new_Pvariable(conf[CONF_TRIGGER_ID], var)
-        await automation.build_automation(trigger, [(cg.std_string, "frame")], conf)
+        await automation.build_automation(trigger, [(cg.std_string, "frame"), (cg.std_string, "frame_type")], conf)

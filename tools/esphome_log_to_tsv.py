@@ -14,8 +14,10 @@ This keeps only those lines and writes the TSV that the other tools and captures
 
 It reads the output of `esphome logs`, a log downloaded from the ESPHome Builder, and
 Home Assistant's log when the ESPHome integration forwards the device's logs. Lines
-without a date get the date from --date, or else the file's modification date; the
-date moves on by a day when the time of day goes back.
+without a date get the date from --date, or else from the file's modification time (the
+day before when the first line is later in the day than that); the date moves on by a
+day when the time of day goes back. Times without a UTC offset are in this computer's
+time zone.
 
   esphome_log_to_tsv.py bus.log > bus.tsv
   esphome_log_to_tsv.py --date 2026-11-18 bus.log > bus.tsv
@@ -95,6 +97,26 @@ class Clock:
         return moment.timestamp() + fraction
 
 
+def guess_start_date(path: Path) -> dt.date:
+    """The date of the first line of a log, from the file's modification time.
+
+    The file was last written at the end of the log. When the first line's time of day is
+    later than that, the log ran past midnight and started the day before. A log longer
+    than a day needs --date.
+    """
+    modified = dt.datetime.fromtimestamp(path.stat().st_mtime)
+    with path.open(encoding="utf-8", errors="replace") as handle:
+        for line in handle:
+            line = ANSI_RE.sub("", line)
+            if DATETIME_RE.search(line):
+                return modified.date()  # the lines carry their own date
+            tod = TIME_RE.search(line)
+            if tod and MESSAGE_RE.search(line):
+                first = dt.time(int(tod.group(1)), int(tod.group(2)), int(tod.group(3)))
+                return modified.date() - dt.timedelta(days=1) if first > modified.time() else modified.date()
+    return modified.date()
+
+
 def convert(lines: Iterable[str], clock: Clock) -> Iterator[str]:
     """Yield TSV rows for the frame lines in an ESPHome log."""
     for raw_line in lines:
@@ -128,7 +150,7 @@ def main(argv: list[str] | None = None) -> int:
         except ValueError:
             parser.error(f"--date must be YYYY-MM-DD, not {args.date!r}")
     elif args.log:
-        start = dt.date.fromtimestamp(Path(args.log).stat().st_mtime)
+        start = guess_start_date(Path(args.log))
     else:
         start = dt.date.today()
 

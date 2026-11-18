@@ -2,13 +2,14 @@
 #   make -C tests test
 # - units:   write guards, queue/retry timing and hand-checked decoder values
 # - isp:     the ATmega programmer (STK500v1 -> ISP) against a simulated ATmega328P
-# - decoder: C++ decoder vs the Python reference (tools/f1f2_decode.py) over every
-#            bus log in captures/; skipped when there are none (see captures/README.md)
+# - decoder: C++ decoder vs the Python reference (tools/f1f2_decode.py) over the bus log
+#            in fixtures/ and every log in captures/ (see captures/README.md)
 CXX ?= c++
 CXXFLAGS ?= -std=c++17 -O1 -Wall -Wextra -Werror
 INC = -I../components/daikin_diii
 HDRS = ../components/daikin_diii/diii_decoder.h ../components/daikin_diii/diii_writer.h
-CAPTURES = $(wildcard ../captures/*.tsv)
+# a short real log in fixtures/ (so CI always runs it), plus your own logs in captures/
+CAPTURES = $(wildcard fixtures/*.tsv) $(wildcard ../captures/*.tsv)
 BUILD ?= build
 
 .PHONY: test units isp decoder clean

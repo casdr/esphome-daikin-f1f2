@@ -144,12 +144,15 @@ class WriteBudget {
   bool enabled() const { return this->burst_ != 0; }
   uint16_t burst() const { return this->burst_; }
 
+  // Reading never adds an entry: a destination without one has its full burst.
   uint16_t available(uint8_t dst, uint32_t now_ms) {
     if (!this->enabled()) return 0;
-    Entry *entry = this->entry_(dst, now_ms);
-    if (entry == nullptr) return 0;
-    this->refill_(*entry, now_ms);
-    return entry->tokens;
+    for (auto &entry : this->entries_) {
+      if (entry.dst != dst) continue;
+      this->refill_(entry, now_ms);
+      return entry.tokens;
+    }
+    return this->burst_;
   }
   bool take(uint8_t dst, uint32_t now_ms) {
     if (!this->enabled()) return true;
@@ -168,12 +171,18 @@ class WriteBudget {
     entry->tokens = tokens > this->burst_ ? this->burst_ : tokens;
     entry->last_ms = now_ms;
   }
+  // Brings every entry up to date, before saving.
+  void refill_all(uint32_t now_ms) {
+    for (auto &entry : this->entries_) this->refill_(entry, now_ms);
+  }
   // For saving: destination and tokens of every tracked group.
   size_t size() const { return this->entries_.size(); }
   uint8_t dst_at(size_t i) const { return this->entries_[i].dst; }
   uint16_t tokens_at(size_t i) const { return this->entries_[i].tokens; }
 
-  static const size_t MAX_ENTRIES = 32;
+  // A DIII-NET line has at most 64 addresses (1-00 to 4-15). When the table is
+  // full, entries whose budget is full again are dropped: they carry nothing.
+  static const size_t MAX_ENTRIES = 64;
 
  protected:
   struct Entry {
@@ -184,7 +193,13 @@ class WriteBudget {
   Entry *entry_(uint8_t dst, uint32_t now_ms) {
     for (auto &entry : this->entries_)
       if (entry.dst == dst) return &entry;
-    if (this->entries_.size() >= MAX_ENTRIES) return nullptr;
+    if (this->entries_.size() >= MAX_ENTRIES) {
+      for (size_t i = this->entries_.size(); i-- > 0;) {
+        this->refill_(this->entries_[i], now_ms);
+        if (this->entries_[i].tokens >= this->burst_) this->entries_.erase(this->entries_.begin() + i);
+      }
+      if (this->entries_.size() >= MAX_ENTRIES) return nullptr;  // 64 groups all below their burst
+    }
     this->entries_.push_back(Entry{dst, this->burst_, now_ms});
     return &this->entries_.back();
   }

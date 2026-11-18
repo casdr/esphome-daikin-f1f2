@@ -52,10 +52,10 @@ daikin_diii:
 | `serial_enable_pin` | | ESP pin that enables the ATmega's serial output on bridge v1.2 and later (GPIO15). |
 | `units` | required | The indoor units, see below. |
 | `source_address` | `0x30` | Bus address this bridge writes from. `0x0A` is refused: it's the iTM's address. |
-| `write_budget` | `{burst: 30, per_year: 7000}` | Commands per group this bridge may send: `burst` at once, refilled at `per_year` per year. `burst: 0` turns the budget off. See [writing.md](writing.md). |
+| `write_budget` | `{burst: 30, per_year: 7000}` | Commands per group this bridge may send: `burst` at once (at most 255), refilled at `per_year` per year (at least 8). `burst: 0` turns the budget off. See [writing.md](writing.md). |
 | `isp` | | Optional ATmega programming, see [atmega.md](atmega.md). Keys: `mosi_pin`, `miso_pin`, `port` (328), `window` (10 min). |
 | `raw_mqtt` | | Optional raw frame stream, see below. |
-| `on_unknown_frame` | | Automation, run with `frame` (hex) for the first frame of each type the component doesn't know, once per boot. `bridge.yaml` uses it for a Home Assistant notification, see [debugging.md](debugging.md#unknown-frame-notifications). |
+| `on_unknown_frame` | | Automation, run with `frame` (hex) and `frame_type` for a frame type the component doesn't know: the first time, then at most once an hour while it keeps coming. `bridge.yaml` uses it for a Home Assistant notification, see [debugging.md](debugging.md#unknown-frame-notifications). |
 
 ### Units
 

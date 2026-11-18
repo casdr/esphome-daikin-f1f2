@@ -41,9 +41,11 @@ Then turn the log into a TSV, the format the other tools and [captures/](../capt
 python3 tools/esphome_log_to_tsv.py --date 2026-11-18 bus.log -o bus.tsv
 ```
 
-`--date` is the date of the first line. Without it the converter uses the file's date,
-which is wrong for a log that you saved the day after. Lines from Home Assistant's log carry
-their own date and time zone. Both tools need only Python 3.10 or newer, no packages.
+`--date` is the date of the first line. Without it the converter takes the date from the
+file's modification time, which is wrong for a log you copied or saved later. Lines from
+Home Assistant's log carry their own date. Times are read in your computer's time zone,
+unless the line has a UTC offset (Home Assistant's own log file has none by default): run
+the converter where the log was made, or set `TZ`, for example `TZ=Europe/Amsterdam`. Both tools need only Python 3.10 or newer, no packages.
 
 ## The survey
 
@@ -81,7 +83,7 @@ The bridge knows the frame types listed in [protocol.md](protocol.md). The first
 restart that it sees a type that isn't on that list, it logs a warning:
 
 ```
-[W][daikin_diii]: Unknown frame type (first one since boot): F5011C...
+[W][daikin_diii]: Unknown frame type F5_25 (first one since boot): F5011C...
 ```
 
 With **Unknown frame notifications** on, it also creates a notification in Home Assistant
@@ -89,8 +91,10 @@ with the frame and a link to report it. For that, Home Assistant must allow the 
 perform actions: Settings > Devices & services > ESPHome > your bridge > *Configure* >
 *Allow the device to perform Home Assistant actions*.
 
-Each frame type is reported once per restart, at most 32 types. A notification for a type
-you've already seen replaces the earlier one. Known only means the type is described in
+A type is reported the first time it's seen and then at most once an hour while it keeps
+coming, so a notification missed while Home Assistant was restarting, or while the switch was
+off, comes through later. Each type has one notification, which a new report replaces. The
+bridge keeps track of 32 unknown types per restart. Known only means the type is described in
 protocol.md; several known types aren't decoded yet. When you report an unknown one, say
 what the system was doing at that moment.
 
@@ -103,13 +107,14 @@ daikin_diii:
   # ...
   on_unknown_frame:
     - logger.log:
-        format: "New frame type: %s"
-        args: [frame.c_str()]
+        format: "New frame type %s: %s"
+        args: [frame_type.c_str(), frame.c_str()]
 
 switch:
   - platform: daikin_diii
     frame_logging: {name: Frame logging}
 ```
 
-`frame` is the frame as hex, checksum included. `packages/bridge.yaml` has the full
+`frame` is the frame as hex, checksum included, and `frame_type` the type: command and
+length (`F5_25`), and for `E9` also the page and the class byte or sub-page (`E9_41_E0_22`). `packages/bridge.yaml` has the full
 notification.

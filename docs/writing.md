@@ -9,7 +9,7 @@ Nothing is written while *Bus writes enabled* is off. With it off, a climate, ai
 outlet change is refused, logged in *Last bus command* (`refused: writes disabled`) and the
 entity springs back to the real state.
 
-In [packages/bridge.yaml](../packages/bridge.yaml) the switch starts off (`RESTORE_DEFAULT_OFF`) and then
+The switch starts off (`RESTORE_DEFAULT_OFF`, also without the packages) and then
 keeps its state across restarts. Leave it off until the unit table is right: a wrong group
 master sends commands to the wrong units.
 
@@ -37,8 +37,9 @@ that:
   75 minutes (= 7000 a year). Above that, a command is refused
   (`refused: write budget used up`) and the entity springs back. The refill keeps the
   yearly average; the 30 lets normal manual use through without hitting the limit.
-- The budget survives restarts and OTA updates (it's kept in RTC memory, so it doesn't wear
-  the ESP's flash either). After a power loss it starts full.
+- The budget survives restarts and OTA updates: every 30 seconds the groups below their
+  full budget are saved in RTC memory, so it doesn't wear the ESP's flash either. After a
+  power loss it starts full. The bridge tracks up to 64 groups, a full DIII-NET line.
 - `setting_commands` counts every setting command on the bus for a group, also from the
   iTM and wired remotes. A daily [utility meter](https://www.home-assistant.io/integrations/utility_meter/)
   on it shows how many commands a group gets per day.

@@ -261,9 +261,16 @@ def report(survey: Survey) -> str:
             ambiguous = f"  # not sure: could also be {others}" if others else ""
             out.append(f'        vars: {{id: "{address:02x}", group: "{groups[address][0]:02x}", name: {name}, '
                        f'area: area_main{index}}}{ambiguous}')
-        else:
+        elif unit.master:
             out.append("      - path: packages/group-master.yaml")
             out.append(f'        vars: {{id: "{address:02x}", name: {name}, area: area_main{index}}}')
+        else:
+            # a member whose group the log doesn't show, or a unit that never said its role:
+            # a group-master package would send commands to it, so leave it for the reader
+            why = "a member, group unknown" if unit.master is False else "role unknown"
+            out.append(f"      # {unit_name(address)}: {why}. Set its group, or use group-master.yaml if it has the remote:")
+            out.append("      # - path: packages/unit.yaml")
+            out.append(f'      #   vars: {{id: "{address:02x}", group: "??", name: {name}, area: area_main{index}}}')
     out.append("```")
     return "\n".join(out) + "\n"
 

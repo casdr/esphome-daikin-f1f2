@@ -67,16 +67,19 @@ void DaikinDIII::set_unit_text_sensor(uint8_t addr, uint8_t kind, text_sensor::T
 // them. On the ESP8266 a non-flash preference lives in RTC memory: it survives
 // restarts and OTA, costs no flash wear, and is lost on power loss (then the
 // budget starts full again).
+// Only groups below their full budget are saved (a missing group starts full), one
+// byte each: burst is at most 255. 129 bytes of the ESP8266's RTC memory.
 struct BudgetSave {
   uint8_t n;
-  uint8_t dst[16];
-  uint16_t tokens[16];
+  uint8_t dst[::diii::WriteBudget::MAX_ENTRIES];
+  uint8_t tokens[::diii::WriteBudget::MAX_ENTRIES];
 };
 
 void DaikinDIII::load_budget_() {
-  this->budget_pref_ = global_preferences->make_preference<BudgetSave>(fnv1_hash("daikin_diii_budget"), false);
+  // v2: the layout changed (64 entries, one byte per token count); the old one is ignored
+  this->budget_pref_ = global_preferences->make_preference<BudgetSave>(fnv1_hash("daikin_diii_budget_v2"), false);
   BudgetSave saved{};
-  if (!this->budget_pref_.load(&saved) || saved.n > 16) return;
+  if (!this->budget_pref_.load(&saved) || saved.n > ::diii::WriteBudget::MAX_ENTRIES) return;
   uint32_t now = millis();
   for (uint8_t i = 0; i < saved.n; i++) this->writer_.budget().restore(saved.dst[i], saved.tokens[i], now);
   ESP_LOGI(TAG, "Write budget restored for %u group(s)", saved.n);
@@ -84,10 +87,14 @@ void DaikinDIII::load_budget_() {
 
 void DaikinDIII::save_budget_() {
   auto &budget = this->writer_.budget();
+  if (!budget.enabled()) return;
+  budget.refill_all(millis());  // save the counts as they are now, not as of the last command
   BudgetSave saved{};
-  for (size_t i = 0; i < budget.size() && saved.n < 16; i++, saved.n++) {
+  for (size_t i = 0; i < budget.size() && saved.n < ::diii::WriteBudget::MAX_ENTRIES; i++) {
+    if (budget.tokens_at(i) >= budget.burst()) continue;
     saved.dst[saved.n] = budget.dst_at(i);
-    saved.tokens[saved.n] = budget.tokens_at(i);
+    saved.tokens[saved.n] = (uint8_t) budget.tokens_at(i);
+    saved.n++;
   }
   this->budget_pref_.save(&saved);
 }
@@ -299,18 +306,36 @@ void DaikinDIII::set_raw_enabled(bool enabled) {
 void DaikinDIII::check_known_(const uint8_t *frame, size_t length) {
   if (::diii::is_known_frame(frame, length)) return;
   const uint32_t key = ::diii::frame_signature(frame, length);
-  for (uint32_t reported : this->unknown_reported_)
-    if (reported == key) return;
-  if (this->unknown_reported_.size() >= MAX_UNKNOWN_REPORTED) return;
-  this->unknown_reported_.push_back(key);
+  const uint32_t now = millis();
+  bool first = true;
+  for (auto &reported : this->unknown_reported_) {
+    if (reported.key != key) continue;
+    if (now - reported.last_ms < UNKNOWN_REPEAT_MS) return;
+    reported.last_ms = now;
+    first = false;
+    break;
+  }
+  if (first) {
+    if (this->unknown_reported_.size() >= MAX_UNKNOWN_REPORTED) return;
+    this->unknown_reported_.push_back(UnknownReported{key, now});
+  }
   std::string hex;
   char hex_byte[3];
   for (size_t i = 0; i < length; i++) {
     snprintf(hex_byte, sizeof(hex_byte), "%02X", frame[i]);
     hex += hex_byte;
   }
-  ESP_LOGW(TAG, "Unknown frame type (first one since boot): %s", hex.c_str());
-  this->unknown_frame_callback_.call(hex);
+  // the type as frame_signature() tells types apart: command and length, and for E9
+  // the page and the class byte, or the sub-page of the 41 B page E0
+  char frame_type[24];
+  if ((key >> 24) == 0xE9 && length > ::diii::header::PAYLOAD) {
+    snprintf(frame_type, sizeof(frame_type), "E9_%u_%02X_%02X", (unsigned) ((key >> 16) & 0xFF),
+             (unsigned) ((key >> 8) & 0xFF), (unsigned) (key & 0xFF));
+  } else {
+    snprintf(frame_type, sizeof(frame_type), "%02X_%u", (unsigned) (key >> 24), (unsigned) ((key >> 16) & 0xFF));
+  }
+  if (first) ESP_LOGW(TAG, "Unknown frame type %s (first one since boot): %s", frame_type, hex.c_str());
+  this->unknown_frame_callback_.call(hex, frame_type);
 }
 
 void DaikinDIII::set_frame_log_enabled(bool enabled) {
@@ -378,6 +403,7 @@ void DaikinDIII::loop() {
   if (now_ms - this->last_diag_ms_ > 30000) {
     this->last_diag_ms_ = now_ms;
     this->publish_diagnostics_();
+    this->save_budget_();  // RTC memory: no flash wear
   }
   if (now_ms - this->last_stats_ms_ > 300000) {
     this->last_stats_ms_ = now_ms;

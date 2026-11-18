@@ -24,7 +24,8 @@ CONFIG_SCHEMA = cv.Schema(
             WriteEnableSwitch,
             entity_category=ENTITY_CATEGORY_CONFIG,
             icon="mdi:pencil-lock",
-            default_restore_mode="RESTORE_DEFAULT_ON",
+            # off until turned on: a wrong unit table would send commands to the wrong units
+            default_restore_mode="RESTORE_DEFAULT_OFF",
         ).extend(cv.COMPONENT_SCHEMA),
         cv.Optional("raw_logging"): switch.switch_schema(
             RawLoggingSwitch,

@@ -228,8 +228,8 @@ make -C tests test
   simulated year, and decoder values checked by hand against real frames.
 - `isp`: the ATmega programmer, a full avrdude-style session against a simulated
   ATmega328P.
-- `decoder`: the C++ decoder against the Python reference over your own bus logs in
-  [captures/](captures) (skipped when there are none).
+- `decoder`: the C++ decoder against the Python reference over a 12-minute bus log in
+  [tests/fixtures/](tests/fixtures) and your own logs in [captures/](captures).
 
 The tools have their own tests (Python 3.10 or newer, no packages needed): the log
 converter, the survey, and a check that the firmware's list of known frame types matches

@@ -102,6 +102,30 @@ class LogToTsvTest(unittest.TestCase):
         self.assertAlmostEqual(float(rows[0][0]), expected, places=3)
         self.assertEqual(rows[0][1:], ["0.026", "E900FF0C276E"])
 
+    def test_home_assistant_log_without_offset(self) -> None:
+        # Home Assistant's own log file has no offset by default: the clock's time zone applies
+        line = ("2026-11-18 22:58:28.764 INFO (MainThread) [homeassistant.components.esphome.manager] "
+                "Daikin F1F2: [I][daikin_diii.frame:309]: R T  0.026: E900FF0C\n")
+        rows = self.rows(line)  # the test clock runs in UTC
+        expected = dt.datetime(2026, 11, 18, 22, 58, 28, 764000, tzinfo=dt.timezone.utc).timestamp()
+        self.assertAlmostEqual(float(rows[0][0]), expected, places=3)
+
+    def test_start_date_from_file(self) -> None:
+        import os
+        import tempfile
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "bus.log"
+            path.write_text("[23:59:58.000][I][daikin_diii.frame:309]: R T  0.002: 06\n"
+                            "[00:00:02.000][I][daikin_diii.frame:309]: R T  0.002: 06\n")
+            # written at 00:00:03 on 19 Nov: the log started on the 18th
+            written = dt.datetime(2026, 11, 19, 0, 0, 3).timestamp()
+            os.utime(path, (written, written))
+            self.assertEqual(log_to_tsv.guess_start_date(path), dt.date(2026, 11, 18))
+            # a log within one day keeps the file's date
+            path.write_text("[08:00:00.000][I][daikin_diii.frame:309]: R T  0.002: 06\n")
+            os.utime(path, (written + 9 * 3600, written + 9 * 3600))
+            self.assertEqual(log_to_tsv.guess_start_date(path), dt.date(2026, 11, 19))
+
     def test_no_frames(self) -> None:
         self.assertEqual(self.rows("[22:55:40.010][S][sensor]: 'Uptime' >> 193 s\n"), [])
 
@@ -147,6 +171,17 @@ class SurveyTest(unittest.TestCase):
             result.feed(when + 12, f5_change(0x00, 1, 21, False))
         self.assertEqual(result.group_of(), {0x00: [0x01, 0x04]})
         self.assertIn("not sure: could also be", survey.report(result))
+
+    def test_member_without_group(self) -> None:
+        # a member whose master never shows up must not be suggested as a group master
+        result = survey.Survey()
+        result.feed(1_800_000_000.0, f5_change(0x00, 1, 21, False))
+        result.feed(1_800_000_001.0, f5_status(0x03, 20.0))  # status only, role unknown
+        text = survey.report(result)
+        self.assertNotIn('vars: {id: "00", name:', text)
+        self.assertIn("1-00: a member, group unknown", text)
+        self.assertIn("1-03: role unknown", text)
+        self.assertNotIn("packages/group-master.yaml", text)
 
     def test_unknown_frame(self) -> None:
         result = survey.Survey()
