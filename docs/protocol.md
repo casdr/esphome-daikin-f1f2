@@ -387,7 +387,7 @@ Tc and outside air over logs that include about 35 min of compressor running
 
 | page | len | b3 | interval | byte | meaning | evidence / confidence | code |
 |------|-----|----|----------|------|---------|-----------------------|------|
-| `65` | 46 | 10 | 20 s | 11 | compressor: `00` off, `01` starting/stopping, `02` running | coincides with heat demand | `e9_page_65::COMPRESSOR` |
+| `65` | 46 (ERQ: 43) | 10 | 20 s | 11 | compressor: `00` off, `01` starting/stopping, `02` running | coincides with heat demand | `e9_page_65::COMPRESSOR` |
 | `65` | | | | 14 | `04` while running | | |
 | `65` | | | | 15–16 (8.8, sign-mag) | Te, evaporating temperature (low pressure) | ≈ outdoor when idle, drops to −11 °C while heating | `e9_page_65::T_EVAP` |
 | `65` | | | | 17–18 (8.8) | Tc, condensing temperature (high pressure) | ≈ outdoor when idle, up to 42 °C; = indoor gas pipes | `e9_page_65::T_COND` |
@@ -437,6 +437,12 @@ when one module is off, the total is 3 × the other. Byte 32 runs from 20 to 130
 steps, so the unit (Hz, rps or a percentage) and the factor 3 are open. Byte 36 is `02`
 idle on both systems, as 0.2 A would be, but on the test system it follows the speed only
 loosely (r = 0.55): 11.5 A with both modules at their highest speed, and up to 25.4 A at other times.
+
+The ERQ's page `65` is 43 bytes. In its idle frames byte 11 is `00`, bytes 15–16 and 17–18
+read 16.9 → 16.6 °C and 18.6 → 17.2 °C over seven minutes in the evening (Te and Tc near
+ambient, as on this system when idle), byte 26 is `00` and byte 36 `02`. The component
+therefore decodes the 43-byte page with the same offsets as the 46-byte one *(hyp: not
+yet seen with the compressor running)*.
 
 Page `6D` comes once a day, always the same frame:
 `E9 00 FF 10 1A | 6D 6D 67 C0 18 01 81 00 … 00 | 3C`. After the system ID come `01`

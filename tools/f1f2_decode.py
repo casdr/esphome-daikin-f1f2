@@ -94,7 +94,7 @@ class State:
             u["remote"] = t88(b, 30)    # remote-controller sensor (1-04 matches P1P2)
             u["intake"] = t88(b, 43)    # return air, equals F5 room temperature
             u["t11"] = t88(b, 11)       # unknown temperature (hyp)
-        elif cmd == 0xE9 and len(b) == 46 and b[3] == 0x10 and b[5] == 0x65:
+        elif cmd == 0xE9 and len(b) in (46, 43) and b[3] == 0x10 and b[5] == 0x65:  # 43 B: ERQ (hyp)
             self.outdoor["compressor"] = {0: "off", 1: "start", 2: "on"}.get(b[11], f"0x{b[11]:02X}")
             self.outdoor["t_evap"] = sm8(b, 15)  # (hyp) Te, low-pressure saturation
             self.outdoor["t_cond"] = t88(b, 17)  # (hyp) Tc, ~ambient idle, ~42 heating

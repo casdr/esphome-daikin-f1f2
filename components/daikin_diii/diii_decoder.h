@@ -65,6 +65,9 @@ static const size_t INTAKE = 43;    // 8.8, return air
 // E9: outdoor/system data, page id at header::PAYLOAD
 namespace e9_page_65 {
 static const size_t LENGTH = 46;
+// ERQ outdoor units send a 43 B page 65. Its first bytes look the same (idle frames
+// only, P1P2MQTT discussion #293), so it is decoded with the same offsets (hyp).
+static const size_t LENGTH_SHORT = 43;
 static const size_t COMPRESSOR = 11;  // 0 off, 1 starting/stopping, 2 running
 static const size_t T_EVAP = 15;      // 8.8 sign-magnitude
 static const size_t T_COND = 17;      // 8.8
@@ -268,6 +271,7 @@ struct KnownE9 {
 static const KnownE9 KNOWN_E9[] = {
     {0x08, 8, 0x2F, 0xFF},  {0x0C, 8, 0x2F, 0xFF},  {0x10, 8, 0x2F, 0xFF},  {0x08, 17, 0x68, 0xFF},
     {0x0C, 45, 0x6E, 0xFF}, {0x10, 44, 0x67, 0xFF}, {0x10, 46, 0x65, 0xFF}, {0x10, 46, 0x6A, 0xFF},
+    {0x10, 43, 0x65, 0xFF},  // ERQ
     {0x1C, 36, 0xE6, 0xFF}, {0x1C, 46, 0xE0, 0xFF}, {0x10, 32, 0x6D, 0xFF}, {0x1C, 41, 0xE0, 0x02},
     {0x1C, 41, 0xE0, 0x03}, {0x1C, 41, 0xE0, 0x12}, {0x1C, 41, 0xE0, 0x13},
 };
@@ -336,7 +340,7 @@ inline void decode_frame(const uint8_t *frame, size_t length, const uint8_t *b1_
   } else if (cmd == 0xE9) {
     const uint8_t page = frame[header::PAYLOAD];
     const bool class_10 = frame[header::CLASS] == 0x10;
-    if (length == e9_page_65::LENGTH && class_10 && page == 0x65) {
+    if ((length == e9_page_65::LENGTH || length == e9_page_65::LENGTH_SHORT) && class_10 && page == 0x65) {
       sink.on_compressor(frame[e9_page_65::COMPRESSOR]);
       sink.on_system_value(SystemField::T_EVAP, sm88(frame, e9_page_65::T_EVAP));
       sink.on_system_value(SystemField::T_COND, t88(frame, e9_page_65::T_COND));

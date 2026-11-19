@@ -217,6 +217,16 @@ static void test_decoder_known_values() {
   CHECK(capture_speed.system[(int) SystemField::COMP_SPEED_2] == 130.0f);
   CHECK(capture_speed.system[(int) SystemField::COMP_SPEED_TOTAL] == 756.0f);
   CHECK(std::fabs(capture_speed.system[(int) SystemField::CURRENT] - 11.5f) < 1e-5);
+  // ERQ 43 B page 65 (P1P2MQTT discussion #293), idle: same offsets, Te 0x10DA = 16.85,
+  // Tc 0x129D = 18.61, speed 0, byte 36 = 0x02
+  Capture capture_erq;
+  auto erq = hex("E900FF102565FF97C317000000100010DA129D0080240000000000120A080014000000000206000000006A");
+  CHECK(is_known_frame(erq.data(), erq.size()));
+  decode_frame(erq.data(), erq.size(), b1_to_diii, capture_erq);
+  CHECK(std::fabs(capture_erq.system[(int) SystemField::T_EVAP] - 16.8515625f) < 1e-5);
+  CHECK(std::fabs(capture_erq.system[(int) SystemField::T_COND] - 18.61328125f) < 1e-5);
+  CHECK(capture_erq.system[(int) SystemField::COMP_SPEED_TOTAL] == 0.0f);
+  CHECK(std::fabs(capture_erq.system[(int) SystemField::CURRENT] - 0.2f) < 1e-5);
 
   // P1P2Monitor line parsing
   uint8_t parsed[MAX_FRAME];
