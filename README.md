@@ -43,7 +43,7 @@ For the system:
 | **Compressor** | Running or not. |
 | **Defrost or oil return** | An outdoor module in sub-state `07`, a recurring 9-minute operation that looks more like oil return than defrost *(hypothesis)*. |
 | **System clock** | The VRV's own clock. The bus sends it every 10 minutes; the bridge counts the minutes in between, and stops counting when no update has come for 15 minutes, so a lost bus shows as a clock that stands still. |
-| Diagnostics | Bus frames OK / with errors, write queue, last bus command, compressor and fan steps and a capacity value (raw, partly guessed). |
+| Diagnostics | Bus frames OK / with errors, write queue, last bus command, compressor speed, current, compressor and fan steps (partly guessed). |
 
 A Daikin hydrobox on the same bus gets its temperature, power, heat demand and a *heat
 demand step* (0-15) sensor, and a climate that switches it on and off and between heat
@@ -200,8 +200,8 @@ F1F2 bus ── ATmega (P1P2Monitor) ──UART 250000── ESP8266 (ESPHome, d
   this component doesn't know. The component ignores them. If you have another Daikin
   system, I'd like to help get it working: [docs/debugging.md](docs/debugging.md) shows how
   to make a bus log and a survey for a *New system report*.
-- Several sensors are hypotheses: discharge temperature, compressor and fan steps,
-  capacity, defrost. The protocol notes mark what is confirmed and what isn't.
+- Several sensors are hypotheses: discharge temperature, compressor speed and current,
+  compressor and fan steps, defrost. The protocol notes mark what is confirmed and what isn't.
 - Auto and dry can't be set: their command codes are untested.
 - Setpoints are whole degrees.
 - The outlet selects are write-only. The units don't report the per-outlet setting on

@@ -52,9 +52,10 @@ def main() -> None:
     outdoor = state.outdoor
     system_out = ["system"]
     for key, name in [("outdoor_air", "outdoor"), ("t_evap", "t_evap"), ("t_cond", "t_cond"),
-                      ("m1_discharge", "discharge_1"), ("m2_discharge", "discharge_2"), ("capacity", "capacity"),
+                      ("m1_discharge", "discharge_1"), ("m2_discharge", "discharge_2"), ("current", "current"),
                       ("m1_comp_step", "comp_step_1"), ("m2_comp_step", "comp_step_2"), ("m1_fan_step", "fan_step_1"),
-                      ("m2_fan_step", "fan_step_2"), ("m1_comp_freq", "comp_freq_1"), ("m2_comp_freq", "comp_freq_2")]:
+                      ("m2_fan_step", "fan_step_2"), ("m1_comp_speed", "comp_speed_1"), ("m2_comp_speed", "comp_speed_2"),
+                      ("comp_speed_total", "comp_speed_total")]:
         if key in outdoor:
             system_out.append(f"{name}={outdoor[key]:.2f}")
     compressor = {"off": 0, "start": 1, "on": 2}.get(outdoor.get("compressor"), -1)  # type: ignore[arg-type]

@@ -62,14 +62,19 @@ including its checksum. With the stock ESP firmware you publish `W<hex>` on
 
 - `cmd`: frame type (`F5`, `B1`, `E9`, `A5`, …), see [Frame reference](#frame-reference).
 - `src` = sender, `dst` = destination, `FF` = broadcast.
-- `b3` takes the values `08`/`10`/`14`/`1C`. Possibly a source/class field *(hyp)*.
+- `b3` takes the values `08`/`10`/`14`/`1C`. Possibly a source/class field *(hyp)*. It
+  belongs to the frame type: logs of two other systems (an RXQ20 in [P1P2MQTT issue #78](https://github.com/Arnold-n/P1P2MQTT/issues/78) and an ERQ in
+  [discussion #293](https://github.com/Arnold-n/P1P2MQTT/discussions/293)) have the same `b3` per frame type as this one (`E9` page `65` `10`, page `E0`
+  `1C`, `B1` `08`, `A9` `10`, `F5` `1C`, ...). Whether it names the sending device is open.
 - `len` = payload length. Total frame length = `6 + len` (holds for every frame
   type seen).
 - The checksum byte makes `sum(bytes[1:]) & 0xFF == 0`, so
   `cs = -sum(bytes[1:-1]) & 0xFF`. The cmd byte isn't part of the sum.
 - Many frame types carry a sub-command or page id in payload[0] (frame byte 5).
 - `6D 67 C0 18` appears in many frames (`A9`, `B1`, `E9`, `AD`, `F5` page `90`).
-  It may be a system ID or serial *(hyp)*.
+  It identifies the installation: the RXQ20 and ERQ logs above carry `AF 42 D0 48` and
+  `FF 97 C3 17` at the same place in their `A9`, `B1` and `E9` frames, constant over the
+  whole log. What it is derived from (a serial number?) is unknown.
 
 An ACK is a single byte `06`, sent about 2 ms after a directed frame (`A5`, `A9`,
 `B1`, …). About 28% of all frames are ACKs.
@@ -371,7 +376,10 @@ Broadcast by the outdoor unit: `E9 00 FF b3 len | page 6D 67 C0 18 unit … | cs
 - On page `E0` (41 B), byte 11 is a sub-page (`e9_page_e0::SUB_PAGE`): `02`/`03` = status of module 1/2,
   `12`/`13` = temperatures of module 1/2. A REYQ10T is, as far as known, a single
   casing, so "module 1/2" are probably not two outdoor units *(open: compressors or
-  circuits?)*.
+  circuits?)*. Other systems report only module 1: the RXQ20 in issue #78 sends `E0`
+  sub-pages `02` and `12` only, and the ERQ in discussion #293 one sub-page of each
+  kind. So module 2 is something this outdoor unit has and those don't; the number of
+  compressors per model would tell whether it is a compressor.
 
 Field meanings come from correlating each byte with the compressor state and with
 Tc and outside air over logs that include about 35 min of compressor running
@@ -383,9 +391,9 @@ Tc and outside air over logs that include about 35 min of compressor running
 | `65` | | | | 14 | `04` while running | | |
 | `65` | | | | 15–16 (8.8, sign-mag) | Te, evaporating temperature (low pressure) | ≈ outdoor when idle, drops to −11 °C while heating | `e9_page_65::T_EVAP` |
 | `65` | | | | 17–18 (8.8) | Tc, condensing temperature (high pressure) | ≈ outdoor when idle, up to 42 °C; = indoor gas pipes | `e9_page_65::T_COND` |
-| `65` | | | | 26 | rises 0x78→0xDE while running, 0 when idle | *(hyp: compressor frequency/capacity)* | |
+| `65` | | | | 25–26 (16-bit) | compressor speed, total of both modules: 0 idle, 64–756 running; = 3 × (`E0`/02 byte 32 + `E0`/03 byte 32), r = 0.98 | unit unknown, see below | `e9_page_65::COMP_SPEED_TOTAL` |
 | `65` | | | | 27 | outside air, whole °C | r = 0.91 | |
-| `65` | | | | 36 | `02` idle, 0x47–0x83 running | *(hyp: capacity %)* | `e9_page_65::CAPACITY` |
+| `65` | | | | 36 | `02` idle, 0x47–0xFE running | *(hyp: compressor current in 0.1 A, see below)* | `e9_page_65::CURRENT` |
 | `65` | | | | 37 | `26` idle / `29` running | | |
 | `67` | 44 | 10 | 20 s | 21–22 (8.8) | outside air | r = 1.00; also correct while the compressor runs; matched a local weather report and a car thermometer within 1 °C | `e9_page_67::OUTDOOR` |
 | `67` | | | | 41–42 (8.8) | Tc (copy of `65` byte 17) | r = 1.00 | |
@@ -399,9 +407,9 @@ Tc and outside air over logs that include about 35 min of compressor running
 | | | | | 39 | 0 idle, 3–7 running | *(hyp: outdoor fan step)* | `e9_page_e0::FAN_STEP` |
 | `E0`/02,03 | 41 | 1C | 60 s | 14–16 | `00 00 00` idle → `01 1F 03` running | | |
 | | | | | 20–21 | flags `08 60`/`88 70` idle, `80 F0` running | | |
-| | | | | 22, 24 | 0 → up to 0x67/0x7E running | *(hyp: compressor Hz actual/target)* | `e9_page_e0::COMP_FREQ` |
+| | | | | 22, 24 | 0 → mostly 2–15, at most 0x67/0x7E running | correlates poorly with the compressor speed (r = 0.26) | |
 | | | | | 26 | `02` while running | | |
-| | | | | 32 | 0 → 0x14–0x2F running | *(hyp: current or capacity)* | |
+| | | | | 32 | compressor speed of the module: 0 off, 20–130 running, continuous | *(hyp)*; ×3 summed over both modules = page `65` bytes 25–26 | `e9_page_e0::COMP_SPEED` |
 | | | | | 38 | 0 → 0x4F/0x50/0x59 running | *(hyp: fan rpm step)* | |
 | `E0` | 46 | 1C | 60 s | 14–15 | `40 00` idle / `52 02` running | | |
 | | | | | 17–18 (8.8) | outside air | r = 1.00 | |
@@ -418,6 +426,17 @@ Tc and outside air over logs that include about 35 min of compressor running
 | | | | | 13–30 | `10 20 00 00 00 12 3A 71 21 00 60 08 58 C0 07 C0 B4 04` constant | | |
 | `2F` | 8 | 08/0C/10 | 2 min | 6 | `01` constant. Comes as 3 frames with b3 08, 0C and 10 | *(hyp: heartbeat per device)* | |
 | `6D` | 32 | 10 | daily | 10–11 | `01 81`, bytes 12–30 all `00` | see below | |
+
+The compressor speed and current fields come from a finding on an ERQ outdoor unit
+([P1P2MQTT discussion #293](https://github.com/Arnold-n/P1P2MQTT/discussions/293)): on its 43-byte page `65`,
+byte 26 is the compressor frequency in Hz, matching the steps in the ERQ service manual, and
+byte 36 / 10 is the current of one phase. On the test system (two modules, 46-byte page)
+byte 26 is the low byte of the 16-bit value in bytes 25–26, which wraps above 255. Over three days
+of logs it equals 3 × the sum of the per-module `E0` byte 32 (r = 0.98, 2,340 frame pairs);
+when one module is off, the total is 3 × the other. Byte 32 runs from 20 to 130 without
+steps, so the unit (Hz, rps or a percentage) and the factor 3 are open. Byte 36 is `02`
+idle on both systems, as 0.2 A would be, but on the test system it follows the speed only
+loosely (r = 0.55): 11.5 A with both modules at their highest speed, and up to 25.4 A at other times.
 
 Page `6D` comes once a day, always the same frame:
 `E9 00 FF 10 1A | 6D 6D 67 C0 18 01 81 00 … 00 | 3C`. After the system ID come `01`
@@ -799,8 +818,8 @@ Examples for unit 0:
   confirmed. Cooling with the compressor actually running is not examined.
 - Other iTM functions (remote-controller prohibition, setback, filter reset) and
   their frames.
-- `b3` in the header *(hyp: source/class field)*.
-- The system ID `6D67C018` *(hyp)*.
+- `b3` in the header: fixed per frame type on three systems; whether it names the sender.
+- What the system ID is derived from.
 - `F5` 23 B byte 5 (`0x82`), byte 20 (expansion valve or capacity request?), and
   whether units that report airflow `0` have fixed flaps.
 - `F5` 31 B byte 8 for fan, bytes 17 and 23.
@@ -812,7 +831,7 @@ Examples for unit 0:
 - `A9` 24 B, `A9` 46 B SS, `AD` XX/YY/ZZ.
 - `FD` and `E5` in general.
 - Most `E9` fields marked *(hyp)* above, and what "module 1/2" are on a single-casing
-  outdoor unit.
+  outdoor unit (the RXQ20 and ERQ report module 1 only).
 - `E9` page `6D`, daily: what it reports.
 - `E9` page `6A` sub-state `07` (oil return?) and `F5` byte 19 `81` on the 2-xx units.
 - What triggers the `A9` 46 B bursts.

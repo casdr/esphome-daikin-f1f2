@@ -139,12 +139,17 @@ indoor unit; without it they're system-wide.
 | Platform | Keys |
 | --- | --- |
 | `sensor` | `outdoor_temperature`, `evaporating_temperature`, `condensing_temperature`, `discharge_temperature_1`, `discharge_temperature_2` |
-| `sensor` (raw, diagnostic) | `capacity`, `compressor_step_1`, `compressor_step_2`, `fan_step_1`, `fan_step_2`, `compressor_value_1`, `compressor_value_2` |
+| `sensor` (raw, diagnostic) | `compressor_speed_1`, `compressor_speed_2`, `compressor_speed_total`, `compressor_current`, `compressor_step_1`, `compressor_step_2`, `fan_step_1`, `fan_step_2` |
 | `sensor` (diagnostic) | `frames_ok`, `frames_error`, `write_queue`, `writes_lost` |
 | `binary_sensor` | `compressor_running`, `defrost`, `raw_mqtt_connected` |
 | `text_sensor` | `clock`, `last_write` |
 | `switch` | `write_enable`, `raw_logging`, `frame_logging`, `atmega_programming` |
 | `button` | `reset_atmega` |
+
+The old keys `capacity`, `compressor_value_1` and `compressor_value_2` still work, with a warning:
+they are now `compressor_current` (in A instead of a raw number) and `compressor_speed_1`/`_2`
+(page `E0` byte 32 instead of byte 22). The speed has no unit yet, see
+[protocol.md](protocol.md#e9-outdoorsystem-data).
 
 Modules 1 and 2 are the two blocks of outdoor data the system reports; on the test system's
 single outdoor unit they may be two compressors or circuits.

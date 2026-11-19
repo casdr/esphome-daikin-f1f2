@@ -132,6 +132,8 @@ static void test_retry() {
 struct Capture : DecoderSink {
   int calls = 0, mode = -1, fan = -1, airflow = -1, status = -1, power = -1, master = -1, defrost = -1;
   float room = NAN, step = NAN;
+  float system[(int) SystemField::COUNT];
+  Capture() { for (auto &value : system) value = NAN; }
   void on_unit_value(uint8_t addr, UnitField field, float value) override {
     calls++;
     if (addr == 0x08 && field == UnitField::ROOM) room = value;
@@ -144,7 +146,7 @@ struct Capture : DecoderSink {
   void on_unit_fan(uint8_t, uint8_t speed) override { calls++, fan = speed; }
   void on_unit_airflow(uint8_t, uint8_t direction) override { calls++, airflow = direction; }
   void on_unit_status(uint8_t, uint8_t bits) override { calls++, status = bits; }
-  void on_system_value(SystemField, float) override { calls++; }
+  void on_system_value(SystemField field, float value) override { calls++, system[(int) field] = value; }
   void on_compressor(uint8_t) override { calls++; }
   void on_clock(uint8_t, uint8_t) override { calls++; }
 };
@@ -201,6 +203,20 @@ static void test_decoder_known_values() {
   auto member_status = hex("F505FF1C198000610100000000160000000010000004120000800001000028");
   decode_frame(member_status.data(), member_status.size(), b1_to_diii, capture_member);
   CHECK(capture_member.master == 0);
+  // Compressor speed (2026-11-17 13:19, both modules at their highest value): E0/02 and E0/03
+  // byte 32 per module, page 65 bytes 25-26 the 16-bit total (0x02F4 = 756 = 3 x (121 + 130),
+  // within a step), page 65 byte 36 in 0.1 A
+  Capture capture_speed;
+  auto module1 = hex("E900FF1C23E06D67C01801020000011F038AFFA080F0190B370202000000000A790007A40394500003");
+  auto module2 = hex("E900FF1C23E06D67C018010308000020038AFFA080F01B0C400202000000000C8200064C03E75900E0");
+  auto page65 = hex("E900FF1028656D67C0180102001004814C2C2900000800000002F40B160800140000820173360000008011000087");
+  decode_frame(module1.data(), module1.size(), b1_to_diii, capture_speed);
+  decode_frame(module2.data(), module2.size(), b1_to_diii, capture_speed);
+  decode_frame(page65.data(), page65.size(), b1_to_diii, capture_speed);
+  CHECK(capture_speed.system[(int) SystemField::COMP_SPEED_1] == 121.0f);
+  CHECK(capture_speed.system[(int) SystemField::COMP_SPEED_2] == 130.0f);
+  CHECK(capture_speed.system[(int) SystemField::COMP_SPEED_TOTAL] == 756.0f);
+  CHECK(std::fabs(capture_speed.system[(int) SystemField::CURRENT] - 11.5f) < 1e-5);
 
   // P1P2Monitor line parsing
   uint8_t parsed[MAX_FRAME];

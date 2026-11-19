@@ -97,7 +97,10 @@ sensor:
     compressor_step_2: {name: Compressor step module 2}
     fan_step_1: {name: Outdoor fan step module 1}
     fan_step_2: {name: Outdoor fan step module 2}
-    capacity: {name: Capacity (raw)}
+    compressor_speed_1: {name: Compressor speed module 1}
+    compressor_speed_2: {name: Compressor speed module 2}
+    compressor_speed_total: {name: Compressor speed total}
+    compressor_current: {name: Compressor current}
     frames_ok: {name: Bus frames OK}
     frames_error: {name: Bus frames with errors}
     write_queue: {name: Bus write queue}

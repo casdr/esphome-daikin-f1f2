@@ -68,7 +68,8 @@ static const size_t LENGTH = 46;
 static const size_t COMPRESSOR = 11;  // 0 off, 1 starting/stopping, 2 running
 static const size_t T_EVAP = 15;      // 8.8 sign-magnitude
 static const size_t T_COND = 17;      // 8.8
-static const size_t CAPACITY = 36;    // (hyp: capacity %)
+static const size_t COMP_SPEED_TOTAL = 25;  // 16-bit big-endian: 3 x the sum of the E0/02+03 COMP_SPEED bytes
+static const size_t CURRENT = 36;           // 0.1 A, 02 when idle (hyp: compressor current)
 }  // namespace e9_page_65
 
 namespace e9_page_67 {
@@ -88,7 +89,7 @@ static const size_t SUB_STATE_3 = 16;
 namespace e9_page_e0 {
 static const size_t LENGTH = 41;
 static const size_t SUB_PAGE = 11;
-static const size_t COMP_FREQ = 22;   // sub-page 02/03 (hyp: compressor Hz)
+static const size_t COMP_SPEED = 32;  // sub-page 02/03, 0 off, 20-130 running (hyp: compressor speed)
 static const size_t DISCHARGE = 16;   // sub-page 12/13, whole degrees (hyp)
 static const size_t COMP_STEP = 37;   // sub-page 12/13 (hyp)
 static const size_t FAN_STEP = 39;    // sub-page 12/13 (hyp: outdoor fan step)
@@ -156,13 +157,14 @@ enum class SystemField : uint8_t {
   T_COND,        // E9 page 65 @17 (8.8, hyp)
   DISCHARGE_1,   // E9 page E0/12 @16 (whole degrees, hyp)
   DISCHARGE_2,   // E9 page E0/13 @16
-  CAPACITY,      // E9 page 65 @36 (0-255, hyp: capacity / load)
+  CURRENT,       // E9 page 65 @36 / 10 (hyp: compressor current, A)
   COMP_STEP_1,   // E9 page E0/12 @37 (hyp: compressor step, 0 = off)
   COMP_STEP_2,   // E9 page E0/13 @37
   FAN_STEP_1,    // E9 page E0/12 @39 (hyp: outdoor fan step)
   FAN_STEP_2,    // E9 page E0/13 @39
-  COMP_FREQ_1,   // E9 page E0/02 @22 (hyp: compressor frequency, Hz)
-  COMP_FREQ_2,   // E9 page E0/03 @22
+  COMP_SPEED_1,      // E9 page E0/02 @32 (hyp: compressor speed, unit unknown)
+  COMP_SPEED_2,      // E9 page E0/03 @32
+  COMP_SPEED_TOTAL,  // E9 page 65 @25-26 (16-bit, = 3 x (COMP_SPEED_1 + COMP_SPEED_2))
   COUNT
 };
 
@@ -338,7 +340,9 @@ inline void decode_frame(const uint8_t *frame, size_t length, const uint8_t *b1_
       sink.on_compressor(frame[e9_page_65::COMPRESSOR]);
       sink.on_system_value(SystemField::T_EVAP, sm88(frame, e9_page_65::T_EVAP));
       sink.on_system_value(SystemField::T_COND, t88(frame, e9_page_65::T_COND));
-      sink.on_system_value(SystemField::CAPACITY, (float) frame[e9_page_65::CAPACITY]);
+      sink.on_system_value(SystemField::CURRENT, frame[e9_page_65::CURRENT] / 10.0f);
+      sink.on_system_value(SystemField::COMP_SPEED_TOTAL,
+                           (float) (frame[e9_page_65::COMP_SPEED_TOTAL] << 8 | frame[e9_page_65::COMP_SPEED_TOTAL + 1]));
     } else if (length == e9_page_6a::LENGTH && class_10 && page == 0x6A) {
       sink.on_defrost(frame[e9_page_6a::SUB_STATE_1] == 0x07 || frame[e9_page_6a::SUB_STATE_2] == 0x07 ||
                       frame[e9_page_6a::SUB_STATE_3] == 0x07);
@@ -355,8 +359,8 @@ inline void decode_frame(const uint8_t *frame, size_t length, const uint8_t *b1_
         sink.on_system_value(module1 ? SystemField::FAN_STEP_1 : SystemField::FAN_STEP_2,
                              (float) frame[e9_page_e0::FAN_STEP]);
       } else if (sub_page == 0x02 || sub_page == 0x03) {
-        sink.on_system_value(sub_page == 0x02 ? SystemField::COMP_FREQ_1 : SystemField::COMP_FREQ_2,
-                             (float) frame[e9_page_e0::COMP_FREQ]);
+        sink.on_system_value(sub_page == 0x02 ? SystemField::COMP_SPEED_1 : SystemField::COMP_SPEED_2,
+                             (float) frame[e9_page_e0::COMP_SPEED]);
       }
     } else if (length == e9_page_e6::LENGTH && page == 0xE6) {
       const uint8_t hour = frame[e9_page_e6::HOUR], minute = frame[e9_page_e6::MINUTE];

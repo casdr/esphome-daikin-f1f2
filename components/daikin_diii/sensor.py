@@ -1,3 +1,5 @@
+import logging
+
 import esphome.codegen as cg
 import esphome.config_validation as cv
 from esphome.components import sensor
@@ -6,12 +8,14 @@ from esphome.const import (
     ENTITY_CATEGORY_DIAGNOSTIC,
     STATE_CLASS_MEASUREMENT,
     STATE_CLASS_TOTAL_INCREASING,
+    UNIT_AMPERE,
     UNIT_CELSIUS,
 )
 
 from . import CONF_DAIKIN_DIII_ID, CONF_UNIT, DaikinDIII
 
 DEPENDENCIES = ["daikin_diii"]
+_LOGGER = logging.getLogger(__name__)
 
 # key -> index in diii::UnitField
 UNIT_SENSORS = {
@@ -30,15 +34,23 @@ SYSTEM_SENSORS = {
     "discharge_temperature_1": 3,
     "discharge_temperature_2": 4,
 }
-# key -> (index in diii::SystemField, unit, icon)  (plain numbers, hypotheses -> diagnostic)
+# key -> (index in diii::SystemField, unit, icon, decimals)  (hypotheses -> diagnostic)
 SYSTEM_RAW = {
-    "capacity": (5, None, "mdi:gauge"),
-    "compressor_step_1": (6, None, "mdi:speedometer"),
-    "compressor_step_2": (7, None, "mdi:speedometer"),
-    "fan_step_1": (8, None, "mdi:fan"),
-    "fan_step_2": (9, None, "mdi:fan"),
-    "compressor_value_1": (10, None, "mdi:numeric"),
-    "compressor_value_2": (11, None, "mdi:numeric"),
+    "compressor_current": (5, UNIT_AMPERE, "mdi:current-ac", 1),
+    "compressor_step_1": (6, None, "mdi:speedometer", 0),
+    "compressor_step_2": (7, None, "mdi:speedometer", 0),
+    "fan_step_1": (8, None, "mdi:fan", 0),
+    "fan_step_2": (9, None, "mdi:fan", 0),
+    "compressor_speed_1": (10, None, "mdi:speedometer", 0),
+    "compressor_speed_2": (11, None, "mdi:speedometer", 0),
+    "compressor_speed_total": (12, None, "mdi:speedometer", 0),
+}
+# Keys from before v0.3.0, still accepted. capacity was page 65 byte 36 as a raw number and is
+# now that byte in amperes; compressor_value_1/2 read E0 byte 22 and now read byte 32.
+RENAMED = {
+    "capacity": "compressor_current",
+    "compressor_value_1": "compressor_speed_1",
+    "compressor_value_2": "compressor_speed_2",
 }
 DIAG = {"frames_ok": 0, "frames_error": 1, "write_queue": 2, "writes_lost": 3}
 # key -> index in diii::UnitField, plain numbers (hydrobox)
@@ -55,9 +67,10 @@ TEMP_SCHEMA = sensor.sensor_schema(
 
 
 RAW_SCHEMA = {
-    key: sensor.sensor_schema(icon=icon, accuracy_decimals=0, state_class=STATE_CLASS_MEASUREMENT,
-                              entity_category=ENTITY_CATEGORY_DIAGNOSTIC)
-    for key, (_, _, icon) in SYSTEM_RAW.items()
+    key: sensor.sensor_schema(icon=icon, accuracy_decimals=decimals, state_class=STATE_CLASS_MEASUREMENT,
+                              entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
+                              **({"unit_of_measurement": unit} if unit else {}))
+    for key, (_, unit, icon, decimals) in SYSTEM_RAW.items()
 }
 DIAG_SCHEMA = {
     "frames_ok": sensor.sensor_schema(icon="mdi:counter", accuracy_decimals=0, state_class=STATE_CLASS_TOTAL_INCREASING,
@@ -84,11 +97,16 @@ UNIT_DIAG_SCHEMA = {
 
 
 def _validate(config):
+    for old, new in RENAMED.items():
+        if old in config:
+            if new in config:
+                raise cv.Invalid(f"'{old}' is the old name of '{new}'; use only '{new}'")
+            _LOGGER.warning("daikin_diii sensor '%s' is now '%s'; please rename it", old, new)
     has_unit = CONF_UNIT in config
     for key in list(UNIT_SENSORS) + list(UNIT_DIAG) + list(UNIT_RAW):
         if key in config and not has_unit:
             raise cv.Invalid(f"'{key}' requires 'unit'")
-    for key in list(SYSTEM_SENSORS) + list(SYSTEM_RAW) + list(DIAG):
+    for key in list(SYSTEM_SENSORS) + list(SYSTEM_RAW) + list(RENAMED) + list(DIAG):
         if key in config and has_unit:
             raise cv.Invalid(f"'{key}' is a system sensor; remove 'unit'")
     return config
@@ -101,6 +119,7 @@ CONFIG_SCHEMA = cv.All(
             cv.Optional(CONF_UNIT): cv.hex_uint8_t,
             **{cv.Optional(key): TEMP_SCHEMA for key in list(UNIT_SENSORS) + list(SYSTEM_SENSORS)},
             **{cv.Optional(key): schema for key, schema in RAW_SCHEMA.items()},
+            **{cv.Optional(old): RAW_SCHEMA[new] for old, new in RENAMED.items()},
             **{cv.Optional(key): schema for key, schema in DIAG_SCHEMA.items()},
             **{cv.Optional(key): schema for key, schema in UNIT_DIAG_SCHEMA.items()},
             # hydrobox F5 22B @9: 0 without heat demand, 1-15 with (hyp: requested capacity step)
@@ -130,7 +149,7 @@ async def to_code(config):
         if key in config:
             var = await sensor.new_sensor(config[key])
             cg.add(hub.set_system_sensor(index, var))
-    for key, (index, _, _) in SYSTEM_RAW.items():
+    for key, (index, _, _, _) in [*SYSTEM_RAW.items(), *((old, SYSTEM_RAW[new]) for old, new in RENAMED.items())]:
         if key in config:
             var = await sensor.new_sensor(config[key])
             cg.add(hub.set_system_sensor(index, var))

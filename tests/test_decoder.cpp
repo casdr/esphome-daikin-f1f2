@@ -92,8 +92,9 @@ int main(int argc, char **argv) {
     if (entry.second.master >= 0) printf(" master=%d", entry.second.master);
     printf("\n");
   }
-  const char *system_names[] = {"outdoor", "t_evap", "t_cond", "discharge_1", "discharge_2", "capacity",
-                                "comp_step_1", "comp_step_2", "fan_step_1", "fan_step_2", "comp_freq_1", "comp_freq_2"};
+  const char *system_names[] = {"outdoor", "t_evap", "t_cond", "discharge_1", "discharge_2", "current",
+                                "comp_step_1", "comp_step_2", "fan_step_1", "fan_step_2", "comp_speed_1", "comp_speed_2",
+                                "comp_speed_total"};
   printf("system");
   for (int field = 0; field < (int) SystemField::COUNT; field++)
     if (sink.sys_has[field]) printf(" %s=%.2f", system_names[field], sink.sys[field]);

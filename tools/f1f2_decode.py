@@ -98,7 +98,8 @@ class State:
             self.outdoor["compressor"] = {0: "off", 1: "start", 2: "on"}.get(b[11], f"0x{b[11]:02X}")
             self.outdoor["t_evap"] = sm8(b, 15)  # (hyp) Te, low-pressure saturation
             self.outdoor["t_cond"] = t88(b, 17)  # (hyp) Tc, ~ambient idle, ~42 heating
-            self.outdoor["capacity"] = float(b[36])  # (hyp)
+            self.outdoor["current"] = b[36] / 10  # (hyp) compressor current, A
+            self.outdoor["comp_speed_total"] = float(b[25] << 8 | b[26])  # = 3 x (module 1 + module 2 speed)
         elif cmd == 0xE9 and len(b) == 46 and b[3] == 0x10 and b[5] == 0x6A:
             self.outdoor["defrost"] = 0x07 in (b[12], b[14], b[16])  # (hyp) defrost or oil return
         elif cmd == 0xE9 and len(b) == 44 and b[3] == 0x10:
@@ -109,7 +110,7 @@ class State:
             self.outdoor[f"m{m}_comp_step"] = float(b[37])  # (hyp)
             self.outdoor[f"m{m}_fan_step"] = float(b[39])  # (hyp)
         elif cmd == 0xE9 and len(b) == 41 and b[5] == 0xE0 and b[11] in (0x02, 0x03):
-            self.outdoor[f"m{b[11] - 1}_comp_freq"] = float(b[22])  # (hyp)
+            self.outdoor[f"m{b[11] - 1}_comp_speed"] = float(b[32])  # (hyp) compressor speed
         elif cmd == 0xE9 and len(b) == 36 and b[5] == 0xE6:
             self.outdoor["clock"] = f"{b[11]:02d}:{b[12]:02d}"
         elif cmd == 0xA5:
