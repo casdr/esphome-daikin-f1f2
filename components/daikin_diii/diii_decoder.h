@@ -77,7 +77,7 @@ static const size_t CURRENT = 36;           // 0.1 A, 02 when idle (hyp: compres
 
 namespace e9_page_67 {
 static const size_t LENGTH = 44;
-static const size_t OUTDOOR = 21;  // 8.8 signed
+static const size_t OUTDOOR = 21;  // 8.8 sign-magnitude (like Te)
 }  // namespace e9_page_67
 
 // three outdoor modules as (state, sub-state) pairs at 11..16
@@ -196,9 +196,6 @@ class DecoderSink {
 
 inline float t88(const uint8_t *frame, size_t offset) {
   return (float) ((uint16_t) (frame[offset] << 8 | frame[offset + 1])) / 256.0f;
-}
-inline float t88s(const uint8_t *frame, size_t offset) {
-  return (float) ((int16_t) (frame[offset] << 8 | frame[offset + 1])) / 256.0f;
 }
 inline float sm88(const uint8_t *frame, size_t offset) {
   uint16_t raw = (uint16_t) (frame[offset] << 8 | frame[offset + 1]);
@@ -351,7 +348,7 @@ inline void decode_frame(const uint8_t *frame, size_t length, const uint8_t *b1_
       sink.on_defrost(frame[e9_page_6a::SUB_STATE_1] == 0x07 || frame[e9_page_6a::SUB_STATE_2] == 0x07 ||
                       frame[e9_page_6a::SUB_STATE_3] == 0x07);
     } else if (length == e9_page_67::LENGTH && class_10 && page == 0x67) {
-      sink.on_system_value(SystemField::OUTDOOR, t88s(frame, e9_page_67::OUTDOOR));
+      sink.on_system_value(SystemField::OUTDOOR, sm88(frame, e9_page_67::OUTDOOR));
     } else if (length == e9_page_e0::LENGTH && page == 0xE0) {
       const uint8_t sub_page = frame[e9_page_e0::SUB_PAGE];
       if (sub_page == 0x12 || sub_page == 0x13) {

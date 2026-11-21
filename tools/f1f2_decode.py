@@ -103,7 +103,7 @@ class State:
         elif cmd == 0xE9 and len(b) == 46 and b[3] == 0x10 and b[5] == 0x6A:
             self.outdoor["defrost"] = 0x07 in (b[12], b[14], b[16])  # (hyp) defrost or oil return
         elif cmd == 0xE9 and len(b) == 44 and b[3] == 0x10:
-            self.outdoor["outdoor_air"] = t88(b, 21, signed=True)  # (hyp) stays ~8 while running
+            self.outdoor["outdoor_air"] = sm8(b, 21)  # sign-magnitude, like Te
         elif cmd == 0xE9 and len(b) == 41 and b[5] == 0xE0 and b[11] in (0x12, 0x13):
             m = b[11] - 0x11
             self.outdoor[f"m{m}_discharge"] = float(b[16])  # (hyp)

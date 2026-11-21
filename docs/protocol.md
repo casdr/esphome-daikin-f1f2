@@ -97,7 +97,7 @@ bytes (payload[n] = frame byte 5 + n).
 |------|----------|---------|
 | temperature, word | 8.8 fixed point, big endian, °C = value / 256 | `16 00` = 22.0, `0x1179` = 17.47 |
 | temperature, byte | whole °C | `0x16` = 22 |
-| negative values (`E9` frames) | sign-magnitude: top bit = negative | `0x88` = −8 °C, `0x8B46` = −11.27 °C |
+| negative values (`E9` frames) | sign-magnitude: top bit = negative, also for the outside air on page `67` | `0x88` = −8 °C, `0x8B46` = −11.27 °C, `0x8266` = −2.40 °C |
 
 Indoor temperatures are unsigned.
 
@@ -395,7 +395,7 @@ Tc and outside air over logs that include about 35 min of compressor running
 | `65` | | | | 27 | outside air, whole °C | r = 0.91 | |
 | `65` | | | | 36 | `02` idle, 0x47–0xFE running | *(hyp: compressor current in 0.1 A, see below)* | `e9_page_65::CURRENT` |
 | `65` | | | | 37 | `26` idle / `29` running | | |
-| `67` | 44 | 10 | 20 s | 21–22 (8.8) | outside air | r = 1.00; also correct while the compressor runs; matched a local weather report and a car thermometer within 1 °C | `e9_page_67::OUTDOOR` |
+| `67` | 44 | 10 | 20 s | 21–22 (8.8, sign-magnitude) | outside air | r = 1.00; matched a local weather report and a car thermometer within 1 °C. Below 0 °C (night of 2026-11-20) it crossed zero smoothly as sign-magnitude, e.g. `00 22` → `80 02` → `80 36` = 0.13 → −0.01 → −0.21 °C; it read −7 °C while the compressor ran in heating at about −1 °C | `e9_page_67::OUTDOOR` |
 | `67` | | | | 41–42 (8.8) | Tc (copy of `65` byte 17) | r = 1.00 | |
 | `E0`/12,13 | 41 | 1C | 60 s | 15 | outside air, whole °C (per module) | r = 0.95 | |
 | | | | | 16 | discharge temperature | *(hyp)*; 13 °C idle → 48 °C running, r(Tc) = 0.96 | `e9_page_e0::DISCHARGE` |

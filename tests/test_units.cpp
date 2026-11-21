@@ -239,8 +239,12 @@ static void test_decoder_known_values() {
   // signed temperatures
   uint8_t neg[2] = {0x80 | 0x02, 0x80};  // sign-magnitude -2.5
   CHECK(std::fabs(sm88(neg, 0) + 2.5f) < 1e-6);
-  uint8_t twos[2] = {0xFD, 0x80};  // two's complement -2.5
-  CHECK(std::fabs(t88s(twos, 0) + 2.5f) < 1e-6);
+  // page 67 outdoor air below zero is sign-magnitude: 0x8266 = -2.398 (2026-11-21 night
+  // read as two's complement gave -125.6); frame from the fixture with bytes 21-22 changed
+  Capture capture_frost;
+  auto frost = hex("E900FF1026676D67C018010000000000000000000082664000000000000000000000000000000000000A097C");
+  decode_frame(frost.data(), frost.size(), b1_to_diii, capture_frost);
+  CHECK(std::fabs(capture_frost.system[(int) SystemField::OUTDOOR] + 2.3984375f) < 1e-6);
 }
 
 static void test_budget() {
