@@ -392,28 +392,29 @@ Tc and outside air over logs that include about 35 min of compressor running
 | `65` | | | | 15–16 (8.8, sign-mag) | Te, evaporating temperature (low pressure) | ≈ outdoor when idle, drops to −11 °C while heating | `e9_page_65::T_EVAP` |
 | `65` | | | | 17–18 (8.8, sign-magnitude) | Tc, condensing temperature (high pressure) | ≈ outdoor when idle, up to 42 °C; = indoor gas pipes. Idle at −4 °C outside it went to `80 30` = −0.19 °C (2026-11-22) | `e9_page_65::T_COND` |
 | `65` | | | | 25–26 (16-bit) | compressor speed, total of both modules: 0 idle, 64–756 running; = 3 × (`E0`/02 byte 32 + `E0`/03 byte 32), r = 0.98 | unit unknown, see below | `e9_page_65::COMP_SPEED_TOTAL` |
-| `65` | | | | 27 | outside air, whole °C | r = 0.91 | |
+| `65` | | | | 27 | outside air, whole °C, second value | r = 0.91; a steady 3.5 °C above page `67` (sd 0.3 over 930 idle frames), see below | |
 | `65` | | | | 35–36 (16-bit) | `00 02` idle, up to `01 98` (40.8 A) running | *(hyp: compressor current in 0.1 A, see below)*; r = 0.94 with the compressor speed | `e9_page_65::CURRENT` |
-| `65` | | | | 37 | `26` idle / `29` running | | |
-| `67` | 44 | 10 | 20 s | 21–22 (8.8, sign-magnitude) | outside air | r = 1.00; matched a local weather report and a car thermometer within 1 °C. Below 0 °C (night of 2026-11-20) it crossed zero smoothly as sign-magnitude, e.g. `00 22` → `80 02` → `80 36` = 0.13 → −0.01 → −0.21 °C; it read −7 °C while the compressor ran in heating at about −1 °C | `e9_page_67::OUTDOOR` |
+| `65` | | | | 37 | `26`–`36`, `22` after an idle weekend | not an idle/running flag as first thought: it changes slowly *(hyp: a temperature in whole °C, 34 after a weekend off, 38 idle on working days, up to 54 running)* | |
+| `67` | 44 | 10 | 20 s | 21–22 (8.8, sign-magnitude) | outside air | r = 1.00; matched a local weather report and a car thermometer within 1 °C. Below 0 °C (night of 2026-11-20) it crossed zero smoothly as sign-magnitude, e.g. `00 22` → `80 02` → `80 36` = 0.13 → −0.01 → −0.21 °C; it read −7 °C while the compressor ran in heating at about −1 °C, so it is not reliable during a heating run in cold weather | `e9_page_67::OUTDOOR` |
 | `67` | | | | 41–42 (8.8) | Tc (copy of `65` byte 17) | r = 1.00 | |
-| `E0`/12,13 | 41 | 1C | 60 s | 15 | outside air, whole °C (per module) | r = 0.95 | |
+| `E0`/12,13 | 41 | 1C | 60 s | 15 | outside air, whole °C (per module), second value | r = 0.95; module 2 a steady 3.5 °C above page `67`, module 1 about 6 °C above and less steady, see below | |
 | | | | | 16 | discharge temperature, whole °C, decoded as sign-magnitude like the other bytes on this page (not yet seen below 0) | *(hyp)*; 13 °C idle → 48 °C running, r(Tc) = 0.96 | `e9_page_e0::DISCHARGE` |
-| | | | | 18 | 27–42 °C, rises slowly, stays high afterwards | *(hyp: inverter fin / compressor body)* | |
+| | | | | 18 | 27–42 °C, rises slowly, stays high afterwards; still 25–30 after two idle days at 4–14 °C outside | *(hyp: compressor body, kept warm by the crankcase heater; an inverter fin would cool down)* | |
 | | | | | 19–21, 25 | heat-exchanger temperatures, drop below ambient in heating | *(hyp)* | |
-| | | | | 23–24, 27, 29, 30 | can go negative (sign-mag, e.g. `88` = −8) | *(hyp: suction/Te per module)* | |
+| | | | | 23–24, 27 | can go negative (sign-mag, e.g. `88` = −8), follow the outside air when idle | *(hyp: suction/Te per module)* | |
+| | | | | 29, 30 | constant `03` and `0B` (module 2 `0D`) while idle, also when the outside air moves 10 °C | not temperatures | |
 | | | | | 28 | Tc, whole °C | r = 1.00 | |
 | | | | | 37 | 0 idle, 6–9 running | *(hyp: compressor step)* | `e9_page_e0::COMP_STEP` |
 | | | | | 39 | 0 idle, 3–7 running | *(hyp: outdoor fan step)* | `e9_page_e0::FAN_STEP` |
-| `E0`/02,03 | 41 | 1C | 60 s | 14–16 | `00 00 00` idle → `01 1F 03` running | | |
-| | | | | 20–21 | flags `08 60`/`88 70` idle, `80 F0` running | | |
+| `E0`/02,03 | 41 | 1C | 60 s | 14–16 | `00 00 00` idle → `01 1F 03` running; module 2 also `01 00 00` when idle (2026-11-21) | | |
+| | | | | 20–21 | flags `08 60`/`88 70`/`0A 40` idle, `80 F0` running | `0A 40` on an idle weekend | |
 | | | | | 22, 24 | 0 → mostly 2–15, at most 0x67/0x7E running | correlates poorly with the compressor speed (r = 0.26) | |
 | | | | | 26 | `02` while running | | |
 | | | | | 32 | compressor speed of the module: 0 off, 20–130 running, continuous | *(hyp)*; ×3 summed over both modules = page `65` bytes 25–26 | `e9_page_e0::COMP_SPEED` |
 | | | | | 38 | 0 → 0x4F/0x50/0x59 running | *(hyp: fan rpm step)* | |
-| `E0` | 46 | 1C | 60 s | 14–15 | `40 00` idle / `52 02` running | | |
+| `E0` | 46 | 1C | 60 s | 14–15 | `40 00` or `20 00` idle / `52 02` running | `20 00` on an idle weekend | |
 | | | | | 17–18 (8.8) | outside air | r = 1.00 | |
-| | | | | 25 | outside air, whole °C | | |
+| | | | | 25 | outside air, whole °C, second value | a steady 3.5 °C above page `67`, see below | |
 | | | | | 30, 36, 38, 42 | 0/small idle, large running | *(hyp: run counters / capacity)* | |
 | `6A` | 46 | 10 | on change | 11–16 | 3× (state, sub-state): `01 00` idle, `02 00` running, `01 09` right after stop, `01 07` during a 9-minute special operation, see below | *(hyp: per module; 09 = residual/oil return, 07 = oil return or another recovery operation)* | `e9_page_6a::SUB_STATE_1`, `e9_page_6a::SUB_STATE_2`, `e9_page_6a::SUB_STATE_3` |
 | | | | | 17–19 | `20 10 10` / `20 20 20` | | |
@@ -426,6 +427,13 @@ Tc and outside air over logs that include about 35 min of compressor running
 | | | | | 13–30 | `10 20 00 00 00 12 3A 71 21 00 60 08 58 C0 07 C0 B4 04` constant | | |
 | `2F` | 8 | 08/0C/10 | 2 min | 6 | `01` constant. Comes as 3 frames with b3 08, 0C and 10 | *(hyp: heartbeat per device)* | |
 | `6D` | 32 | 10 | daily | 10–11 | `01 81`, bytes 12–30 all `00` | see below | |
+
+There are two outside air values on the bus. Page `67` bytes 21–22 (and `E0` 46 B bytes
+17–18, the same value) is the one the component reports. Page `65` byte 27, `E0`/13 byte 15
+and `E0` 46 B byte 25 hold a second one in whole degrees, a steady 3.5 °C higher over two idle
+days (2026-11-21/22); the iTM shows this second value (10 °C against 6.5 °C). Which of the
+two is closer to the real outside air is open: against the met.no forecast the higher one
+fitted better on a clear frosty night and the lower one better at midday.
 
 The compressor speed and current fields come from a finding on an ERQ outdoor unit
 ([P1P2MQTT discussion #293](https://github.com/Arnold-n/P1P2MQTT/discussions/293)): on its 43-byte page `65`,
@@ -841,6 +849,7 @@ Examples for unit 0:
 - Most `E9` fields marked *(hyp)* above, and what "module 1/2" are on a single-casing
   outdoor unit (the RXQ20 and ERQ report module 1 only).
 - `E9` page `6D`, daily: what it reports.
+- The two outside air values (3.5 °C apart): which sensor or correction each one is.
 - `E9` page `6A` sub-state `07` (oil return?) and `F5` byte 19 `81` on the 2-xx units.
 - What triggers the `A9` 46 B bursts.
 - `A5` payload[3] (which setpoint applies?), payload[10] and payload[13].
