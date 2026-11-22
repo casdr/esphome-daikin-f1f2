@@ -393,7 +393,7 @@ Tc and outside air over logs that include about 35 min of compressor running
 | `65` | | | | 17–18 (8.8, sign-magnitude) | Tc, condensing temperature (high pressure) | ≈ outdoor when idle, up to 42 °C; = indoor gas pipes. Idle at −4 °C outside it went to `80 30` = −0.19 °C (2026-11-22) | `e9_page_65::T_COND` |
 | `65` | | | | 25–26 (16-bit) | compressor speed, total of both modules: 0 idle, 64–756 running; = 3 × (`E0`/02 byte 32 + `E0`/03 byte 32), r = 0.98 | unit unknown, see below | `e9_page_65::COMP_SPEED_TOTAL` |
 | `65` | | | | 27 | outside air, whole °C | r = 0.91 | |
-| `65` | | | | 36 | `02` idle, 0x47–0xFE running | *(hyp: compressor current in 0.1 A, see below)* | `e9_page_65::CURRENT` |
+| `65` | | | | 35–36 (16-bit) | `00 02` idle, up to `01 98` (40.8 A) running | *(hyp: compressor current in 0.1 A, see below)*; r = 0.94 with the compressor speed | `e9_page_65::CURRENT` |
 | `65` | | | | 37 | `26` idle / `29` running | | |
 | `67` | 44 | 10 | 20 s | 21–22 (8.8, sign-magnitude) | outside air | r = 1.00; matched a local weather report and a car thermometer within 1 °C. Below 0 °C (night of 2026-11-20) it crossed zero smoothly as sign-magnitude, e.g. `00 22` → `80 02` → `80 36` = 0.13 → −0.01 → −0.21 °C; it read −7 °C while the compressor ran in heating at about −1 °C | `e9_page_67::OUTDOOR` |
 | `67` | | | | 41–42 (8.8) | Tc (copy of `65` byte 17) | r = 1.00 | |
@@ -435,8 +435,10 @@ byte 26 is the low byte of the 16-bit value in bytes 25–26, which wraps above 
 of logs it equals 3 × the sum of the per-module `E0` byte 32 (r = 0.98, 2,340 frame pairs);
 when one module is off, the total is 3 × the other. Byte 32 runs from 20 to 130 without
 steps, so the unit (Hz, rps or a percentage) and the factor 3 are open. Byte 36 is `02`
-idle on both systems, as 0.2 A would be, but on the test system it follows the speed only
-loosely (r = 0.55): 11.5 A with both modules at their highest speed, and up to 25.4 A at other times.
+idle on both systems, as 0.2 A would be. On the test system the current is the 16-bit value
+in bytes 35–36: byte 36 alone wraps above 25.5 A and follows the speed only loosely
+(r = 0.55), the 16-bit value follows it closely (r = 0.94) and reaches 40.8 A, with 37.1 A
+when both modules run at their highest speed.
 
 The ERQ's page `65` is 43 bytes. In its idle frames byte 11 is `00`, bytes 15–16 and 17–18
 read 16.9 → 16.6 °C and 18.6 → 17.2 °C over seven minutes in the evening (Te and Tc near
@@ -457,7 +459,7 @@ about 9 minutes, seen 6 times in three days at 7–9 °C outside, sometimes 8 h 
 apart. It was first taken for a defrost; a closer trace of two of them (2026-11-18)
 makes that unlikely:
 
-- For about 4 minutes page `65` byte 36 (capacity) climbs from about 125 to 245 with
+- For about 4 minutes page `65` byte 36 (the low byte of the current) climbs from about 125 to 245 with
   Te at +1…+6 °C.
 - Then capacity drops to near 0 within 20 s, Te dips to −3…−5 °C and Tc rises to about
   44 °C for 2–3 minutes. During this step `F5` byte 19 was `81` on 2-00 and 2-01 only

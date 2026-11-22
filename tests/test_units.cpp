@@ -205,7 +205,7 @@ static void test_decoder_known_values() {
   CHECK(capture_member.master == 0);
   // Compressor speed (2026-11-17 13:19, both modules at their highest value): E0/02 and E0/03
   // byte 32 per module, page 65 bytes 25-26 the 16-bit total (0x02F4 = 756 = 3 x (121 + 130),
-  // within a step), page 65 byte 36 in 0.1 A
+  // within a step), page 65 bytes 35-36 in 0.1 A
   Capture capture_speed;
   auto module1 = hex("E900FF1C23E06D67C01801020000011F038AFFA080F0190B370202000000000A790007A40394500003");
   auto module2 = hex("E900FF1C23E06D67C018010308000020038AFFA080F01B0C400202000000000C8200064C03E75900E0");
@@ -216,7 +216,8 @@ static void test_decoder_known_values() {
   CHECK(capture_speed.system[(int) SystemField::COMP_SPEED_1] == 121.0f);
   CHECK(capture_speed.system[(int) SystemField::COMP_SPEED_2] == 130.0f);
   CHECK(capture_speed.system[(int) SystemField::COMP_SPEED_TOTAL] == 756.0f);
-  CHECK(std::fabs(capture_speed.system[(int) SystemField::CURRENT] - 11.5f) < 1e-5);
+  // bytes 35-36 = 0x0173: 37.1 A. Byte 36 alone (0x73) read 11.5 A.
+  CHECK(std::fabs(capture_speed.system[(int) SystemField::CURRENT] - 37.1f) < 1e-4);
   // ERQ 43 B page 65 (P1P2MQTT discussion #293), idle: same offsets, Te 0x10DA = 16.85,
   // Tc 0x129D = 18.61, speed 0, byte 36 = 0x02
   Capture capture_erq;

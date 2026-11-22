@@ -72,7 +72,7 @@ static const size_t COMPRESSOR = 11;  // 0 off, 1 starting/stopping, 2 running
 static const size_t T_EVAP = 15;      // 8.8 sign-magnitude
 static const size_t T_COND = 17;      // 8.8 sign-magnitude
 static const size_t COMP_SPEED_TOTAL = 25;  // 16-bit big-endian: 3 x the sum of the E0/02+03 COMP_SPEED bytes
-static const size_t CURRENT = 36;           // 0.1 A, 02 when idle (hyp: compressor current)
+static const size_t CURRENT = 35;           // 16-bit big-endian, 0.1 A, 00 02 when idle (hyp: compressor current)
 }  // namespace e9_page_65
 
 namespace e9_page_67 {
@@ -160,7 +160,7 @@ enum class SystemField : uint8_t {
   T_COND,        // E9 page 65 @17 (8.8, hyp)
   DISCHARGE_1,   // E9 page E0/12 @16 (whole degrees, hyp)
   DISCHARGE_2,   // E9 page E0/13 @16
-  CURRENT,       // E9 page 65 @36 / 10 (hyp: compressor current, A)
+  CURRENT,       // E9 page 65 @35-36 / 10 (hyp: compressor current, A)
   COMP_STEP_1,   // E9 page E0/12 @37 (hyp: compressor step, 0 = off)
   COMP_STEP_2,   // E9 page E0/13 @37
   FAN_STEP_1,    // E9 page E0/12 @39 (hyp: outdoor fan step)
@@ -343,7 +343,7 @@ inline void decode_frame(const uint8_t *frame, size_t length, const uint8_t *b1_
       sink.on_compressor(frame[e9_page_65::COMPRESSOR]);
       sink.on_system_value(SystemField::T_EVAP, sm88(frame, e9_page_65::T_EVAP));
       sink.on_system_value(SystemField::T_COND, sm88(frame, e9_page_65::T_COND));
-      sink.on_system_value(SystemField::CURRENT, frame[e9_page_65::CURRENT] / 10.0f);
+      sink.on_system_value(SystemField::CURRENT, (float) (frame[e9_page_65::CURRENT] << 8 | frame[e9_page_65::CURRENT + 1]) / 10.0f);
       sink.on_system_value(SystemField::COMP_SPEED_TOTAL,
                            (float) (frame[e9_page_65::COMP_SPEED_TOTAL] << 8 | frame[e9_page_65::COMP_SPEED_TOTAL + 1]));
     } else if (length == e9_page_6a::LENGTH && class_10 && page == 0x6A) {

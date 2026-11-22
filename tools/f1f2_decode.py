@@ -98,7 +98,7 @@ class State:
             self.outdoor["compressor"] = {0: "off", 1: "start", 2: "on"}.get(b[11], f"0x{b[11]:02X}")
             self.outdoor["t_evap"] = sm8(b, 15)  # (hyp) Te, low-pressure saturation
             self.outdoor["t_cond"] = sm8(b, 17)  # Tc, sign-magnitude; ~ambient idle, ~42 heating
-            self.outdoor["current"] = b[36] / 10  # (hyp) compressor current, A
+            self.outdoor["current"] = (b[35] << 8 | b[36]) / 10  # (hyp) compressor current, A
             self.outdoor["comp_speed_total"] = float(b[25] << 8 | b[26])  # = 3 x (module 1 + module 2 speed)
         elif cmd == 0xE9 and len(b) == 46 and b[3] == 0x10 and b[5] == 0x6A:
             self.outdoor["defrost"] = 0x07 in (b[12], b[14], b[16])  # (hyp) defrost or oil return
