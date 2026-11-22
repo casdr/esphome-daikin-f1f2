@@ -245,6 +245,15 @@ static void test_decoder_known_values() {
   auto frost = hex("E900FF1026676D67C018010000000000000000000082664000000000000000000000000000000000000A097C");
   decode_frame(frost.data(), frost.size(), b1_to_diii, capture_frost);
   CHECK(std::fabs(capture_frost.system[(int) SystemField::OUTDOOR] + 2.3984375f) < 1e-6);
+  // Tc below zero is sign-magnitude too: 0x8030 = -0.1875 (2026-11-22 morning, read as
+  // unsigned it gave 128.19); the discharge byte likewise, 0x83 = -3. Fixture frames
+  // with those bytes changed.
+  auto cold_tc = hex("E900FF1028656D67C01801000010000A03803000000E000000000009160800140000000002260000000010000069");
+  decode_frame(cold_tc.data(), cold_tc.size(), b1_to_diii, capture_frost);
+  CHECK(std::fabs(capture_frost.system[(int) SystemField::T_COND] + 0.1875f) < 1e-6);
+  auto cold_discharge = hex("E900FF1C23E06D67C0180112DFFCE80983001D0B0A0A0A0A0A0A0A0A0A0C140D000D001900000000FF");
+  decode_frame(cold_discharge.data(), cold_discharge.size(), b1_to_diii, capture_frost);
+  CHECK(capture_frost.system[(int) SystemField::DISCHARGE_1] == -3.0f);
 }
 
 static void test_budget() {

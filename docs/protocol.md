@@ -390,7 +390,7 @@ Tc and outside air over logs that include about 35 min of compressor running
 | `65` | 46 (ERQ: 43) | 10 | 20 s | 11 | compressor: `00` off, `01` starting/stopping, `02` running | coincides with heat demand | `e9_page_65::COMPRESSOR` |
 | `65` | | | | 14 | `04` while running | | |
 | `65` | | | | 15–16 (8.8, sign-mag) | Te, evaporating temperature (low pressure) | ≈ outdoor when idle, drops to −11 °C while heating | `e9_page_65::T_EVAP` |
-| `65` | | | | 17–18 (8.8) | Tc, condensing temperature (high pressure) | ≈ outdoor when idle, up to 42 °C; = indoor gas pipes | `e9_page_65::T_COND` |
+| `65` | | | | 17–18 (8.8, sign-magnitude) | Tc, condensing temperature (high pressure) | ≈ outdoor when idle, up to 42 °C; = indoor gas pipes. Idle at −4 °C outside it went to `80 30` = −0.19 °C (2026-11-22) | `e9_page_65::T_COND` |
 | `65` | | | | 25–26 (16-bit) | compressor speed, total of both modules: 0 idle, 64–756 running; = 3 × (`E0`/02 byte 32 + `E0`/03 byte 32), r = 0.98 | unit unknown, see below | `e9_page_65::COMP_SPEED_TOTAL` |
 | `65` | | | | 27 | outside air, whole °C | r = 0.91 | |
 | `65` | | | | 36 | `02` idle, 0x47–0xFE running | *(hyp: compressor current in 0.1 A, see below)* | `e9_page_65::CURRENT` |
@@ -398,7 +398,7 @@ Tc and outside air over logs that include about 35 min of compressor running
 | `67` | 44 | 10 | 20 s | 21–22 (8.8, sign-magnitude) | outside air | r = 1.00; matched a local weather report and a car thermometer within 1 °C. Below 0 °C (night of 2026-11-20) it crossed zero smoothly as sign-magnitude, e.g. `00 22` → `80 02` → `80 36` = 0.13 → −0.01 → −0.21 °C; it read −7 °C while the compressor ran in heating at about −1 °C | `e9_page_67::OUTDOOR` |
 | `67` | | | | 41–42 (8.8) | Tc (copy of `65` byte 17) | r = 1.00 | |
 | `E0`/12,13 | 41 | 1C | 60 s | 15 | outside air, whole °C (per module) | r = 0.95 | |
-| | | | | 16 | discharge temperature | *(hyp)*; 13 °C idle → 48 °C running, r(Tc) = 0.96 | `e9_page_e0::DISCHARGE` |
+| | | | | 16 | discharge temperature, whole °C, decoded as sign-magnitude like the other bytes on this page (not yet seen below 0) | *(hyp)*; 13 °C idle → 48 °C running, r(Tc) = 0.96 | `e9_page_e0::DISCHARGE` |
 | | | | | 18 | 27–42 °C, rises slowly, stays high afterwards | *(hyp: inverter fin / compressor body)* | |
 | | | | | 19–21, 25 | heat-exchanger temperatures, drop below ambient in heating | *(hyp)* | |
 | | | | | 23–24, 27, 29, 30 | can go negative (sign-mag, e.g. `88` = −8) | *(hyp: suction/Te per module)* | |

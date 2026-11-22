@@ -70,7 +70,7 @@ static const size_t LENGTH = 46;
 static const size_t LENGTH_SHORT = 43;
 static const size_t COMPRESSOR = 11;  // 0 off, 1 starting/stopping, 2 running
 static const size_t T_EVAP = 15;      // 8.8 sign-magnitude
-static const size_t T_COND = 17;      // 8.8
+static const size_t T_COND = 17;      // 8.8 sign-magnitude
 static const size_t COMP_SPEED_TOTAL = 25;  // 16-bit big-endian: 3 x the sum of the E0/02+03 COMP_SPEED bytes
 static const size_t CURRENT = 36;           // 0.1 A, 02 when idle (hyp: compressor current)
 }  // namespace e9_page_65
@@ -93,7 +93,7 @@ namespace e9_page_e0 {
 static const size_t LENGTH = 41;
 static const size_t SUB_PAGE = 11;
 static const size_t COMP_SPEED = 32;  // sub-page 02/03, 0 off, 20-130 running (hyp: compressor speed)
-static const size_t DISCHARGE = 16;   // sub-page 12/13, whole degrees (hyp)
+static const size_t DISCHARGE = 16;   // sub-page 12/13, whole degrees, sign-magnitude (hyp)
 static const size_t COMP_STEP = 37;   // sub-page 12/13 (hyp)
 static const size_t FAN_STEP = 39;    // sub-page 12/13 (hyp: outdoor fan step)
 }  // namespace e9_page_e0
@@ -197,6 +197,8 @@ class DecoderSink {
 inline float t88(const uint8_t *frame, size_t offset) {
   return (float) ((uint16_t) (frame[offset] << 8 | frame[offset + 1])) / 256.0f;
 }
+// whole degrees, sign-magnitude: top bit = negative (0x88 = -8)
+inline float sm8(uint8_t raw) { return (raw & 0x80) ? -(float) (raw & 0x7F) : (float) raw; }
 inline float sm88(const uint8_t *frame, size_t offset) {
   uint16_t raw = (uint16_t) (frame[offset] << 8 | frame[offset + 1]);
   float magnitude = (float) (raw & 0x7FFF) / 256.0f;
@@ -340,7 +342,7 @@ inline void decode_frame(const uint8_t *frame, size_t length, const uint8_t *b1_
     if ((length == e9_page_65::LENGTH || length == e9_page_65::LENGTH_SHORT) && class_10 && page == 0x65) {
       sink.on_compressor(frame[e9_page_65::COMPRESSOR]);
       sink.on_system_value(SystemField::T_EVAP, sm88(frame, e9_page_65::T_EVAP));
-      sink.on_system_value(SystemField::T_COND, t88(frame, e9_page_65::T_COND));
+      sink.on_system_value(SystemField::T_COND, sm88(frame, e9_page_65::T_COND));
       sink.on_system_value(SystemField::CURRENT, frame[e9_page_65::CURRENT] / 10.0f);
       sink.on_system_value(SystemField::COMP_SPEED_TOTAL,
                            (float) (frame[e9_page_65::COMP_SPEED_TOTAL] << 8 | frame[e9_page_65::COMP_SPEED_TOTAL + 1]));
@@ -354,7 +356,7 @@ inline void decode_frame(const uint8_t *frame, size_t length, const uint8_t *b1_
       if (sub_page == 0x12 || sub_page == 0x13) {
         bool module1 = sub_page == 0x12;
         sink.on_system_value(module1 ? SystemField::DISCHARGE_1 : SystemField::DISCHARGE_2,
-                             (float) frame[e9_page_e0::DISCHARGE]);
+                             sm8(frame[e9_page_e0::DISCHARGE]));
         sink.on_system_value(module1 ? SystemField::COMP_STEP_1 : SystemField::COMP_STEP_2,
                              (float) frame[e9_page_e0::COMP_STEP]);
         sink.on_system_value(module1 ? SystemField::FAN_STEP_1 : SystemField::FAN_STEP_2,

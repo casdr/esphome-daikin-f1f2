@@ -97,7 +97,7 @@ class State:
         elif cmd == 0xE9 and len(b) in (46, 43) and b[3] == 0x10 and b[5] == 0x65:  # 43 B: ERQ (hyp)
             self.outdoor["compressor"] = {0: "off", 1: "start", 2: "on"}.get(b[11], f"0x{b[11]:02X}")
             self.outdoor["t_evap"] = sm8(b, 15)  # (hyp) Te, low-pressure saturation
-            self.outdoor["t_cond"] = t88(b, 17)  # (hyp) Tc, ~ambient idle, ~42 heating
+            self.outdoor["t_cond"] = sm8(b, 17)  # Tc, sign-magnitude; ~ambient idle, ~42 heating
             self.outdoor["current"] = b[36] / 10  # (hyp) compressor current, A
             self.outdoor["comp_speed_total"] = float(b[25] << 8 | b[26])  # = 3 x (module 1 + module 2 speed)
         elif cmd == 0xE9 and len(b) == 46 and b[3] == 0x10 and b[5] == 0x6A:
@@ -106,7 +106,7 @@ class State:
             self.outdoor["outdoor_air"] = sm8(b, 21)  # sign-magnitude, like Te
         elif cmd == 0xE9 and len(b) == 41 and b[5] == 0xE0 and b[11] in (0x12, 0x13):
             m = b[11] - 0x11
-            self.outdoor[f"m{m}_discharge"] = float(b[16])  # (hyp)
+            self.outdoor[f"m{m}_discharge"] = float(-(b[16] & 0x7F) if b[16] & 0x80 else b[16])  # (hyp) sign-magnitude
             self.outdoor[f"m{m}_comp_step"] = float(b[37])  # (hyp)
             self.outdoor[f"m{m}_fan_step"] = float(b[39])  # (hyp)
         elif cmd == 0xE9 and len(b) == 41 and b[5] == 0xE0 and b[11] in (0x02, 0x03):
