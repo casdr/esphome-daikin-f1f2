@@ -64,7 +64,8 @@ inline bool is_setting_command(const uint8_t *frame, size_t length) {
 // PP (power_byte) 03 on / 02 off / 00 unchanged, MM (mode_byte) 0x10|mode (0 fan,
 // 1 heat, 2 cool) or 00, XX (mode_detail) follows the mode (00 fan, 01 heat,
 // 02 cool; what else it selects is not known), SP (setpoint) in whole degrees
-// with SF 0x80, or both 00 (docs/protocol.md).
+// with SF 0x80 | tenths (0-9), or both 00 (docs/protocol.md). setpoint_tenths is
+// the setpoint in 0.1 degrees (225 = 22.5), 0 for none.
 // Indoor units take a 20-byte payload. The hydrobox takes the same first 11
 // payload bytes in a 29-byte payload padded with zeros, as the iTM sends it:
 //   A5 0A 10 14 1D 40 03 00 .. (on), 40 02 00 .. (off), 40 00 11 01 00 .. (heat)
@@ -72,7 +73,7 @@ inline bool is_setting_command(const uint8_t *frame, size_t length) {
 static const size_t OPERATION_LEN = 25;
 static const size_t HYDROBOX_OPERATION_LEN = 34;
 inline size_t build_operation(uint8_t *frame, uint8_t src, uint8_t dst, bool hydrobox, uint8_t power_byte,
-                              uint8_t mode_byte, uint8_t mode_detail, uint8_t setpoint) {
+                              uint8_t mode_byte, uint8_t mode_detail, uint16_t setpoint_tenths) {
   const size_t length = hydrobox ? HYDROBOX_OPERATION_LEN : OPERATION_LEN;
   for (size_t i = 0; i < length; i++) frame[i] = 0;
   frame[header::CMD] = 0xA5;
@@ -84,8 +85,8 @@ inline size_t build_operation(uint8_t *frame, uint8_t src, uint8_t dst, bool hyd
   frame[a5_operation::POWER] = power_byte;
   frame[a5_operation::MODE] = mode_byte;
   frame[a5_operation::MODE_DETAIL] = mode_detail;
-  frame[a5_operation::SETPOINT] = setpoint;
-  frame[a5_operation::SETPOINT_VALID] = setpoint ? 0x80 : 0x00;
+  frame[a5_operation::SETPOINT] = (uint8_t) (setpoint_tenths / 10);
+  frame[a5_operation::SETPOINT_VALID] = setpoint_tenths ? (uint8_t) (0x80 | setpoint_tenths % 10) : 0x00;
   frame[a5_operation::SOURCE_FLAG] = 0x80;
   return length;
 }

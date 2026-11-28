@@ -120,7 +120,7 @@ indoor unit; without it they're system-wide.
 
 | Platform | Key | Notes |
 | --- | --- | --- |
-| `climate` | | On a group master or a hydrobox. `unit` is required. On a hydrobox it offers off, heat and cool, without a target temperature. On a group master it also reports what the group is doing (`hvac_action`): heating or cooling while any unit of the group has demand (status bit `0x20`), idle without, fan in fan only, off when the group is off. Demand in cool mode is shown as cooling by analogy; the bit is only confirmed for heating. In auto the bus doesn't say which way it works, so room against setpoint decides. |
+| `climate` | | On a group master or a hydrobox. `unit` is required. On a hydrobox it offers off, heat and cool, without a target temperature. On a group master it also reports what the group is doing (`hvac_action`): heating or cooling while any unit of the group has demand (status bit `0x20`), idle without, fan in fan only, off when the group is off. Demand in cool mode is shown as cooling by analogy; the bit is only confirmed for heating. In auto the bus doesn't say which way it works, so room against setpoint decides. The target temperature goes in 0.1 °C steps, like the iTM; the UI steps 0.5 unless `visual: target_temperature_step` says otherwise. |
 | `sensor` | `room_temperature` | Return air at the unit (`F5`). |
 | `sensor` | `setpoint` | |
 | `sensor` | `remote_temperature` | The wired remote's sensor. Needs `b1_index`. Units without a remote report a fixed 22.06 °C, which is ignored for the climate. |

@@ -39,7 +39,8 @@ namespace f5_change {
 static const size_t LENGTH = 31;
 static const size_t POWER = 6;
 static const size_t MODE = 7;
-static const size_t SETPOINT = 13;  // whole degrees
+static const size_t SETPOINT = 13;         // whole degrees
+static const size_t SETPOINT_TENTHS = 14;  // 0-9 tenths of a degree (iTM 0.1 steps, 2026-11-28)
 static const size_t ROLE = 18;      // 0x12 group master, 0x10 member
 static const size_t STATUS = 19;    // status bits
 }  // namespace f5_change
@@ -57,7 +58,7 @@ namespace b1_unit {
 static const size_t LENGTH = 46;
 static const size_t PIPE_A = 13;    // 8.8 (hyp: liquid pipe)
 static const size_t PIPE_B = 15;    // 8.8 (hyp: gas pipe)
-static const size_t SETPOINT = 17;  // whole degrees; byte 18 holds flags
+static const size_t SETPOINT = 17;  // whole degrees only, the tenths are dropped; byte 18 holds flags
 static const size_t REMOTE = 30;    // 8.8, remote-controller sensor
 static const size_t INTAKE = 43;    // 8.8, return air
 }  // namespace b1_unit
@@ -169,7 +170,7 @@ static const size_t POWER = 6;
 static const size_t MODE = 7;
 static const size_t MODE_DETAIL = 8;
 static const size_t SETPOINT = 11;
-static const size_t SETPOINT_VALID = 12;
+static const size_t SETPOINT_VALID = 12;  // 0x80 | tenths (0-9), or 00 without a setpoint
 static const size_t SOURCE_FLAG = 15;  // 80 in every command from the iTM and from us
 }  // namespace a5_operation
 
@@ -179,7 +180,7 @@ enum class UnitField : uint8_t {
   REMOTE,        // B1 46B @30 - remote-controller sensor
   PIPE_A,        // B1 46B @13 (hyp: liquid pipe)
   PIPE_B,        // B1 46B @15 (hyp: gas pipe)
-  SETPOINT,      // F5 31B @13 (whole degrees) and B1 46B @17
+  SETPOINT,      // F5 31B @13 + @14 tenths, and B1 46B @17 (whole degrees)
   DEMAND_STEP,   // F5 22B @9, hydrobox: 0 without heat demand, 1-15 with (hyp: requested capacity step)
   COUNT
 };
@@ -224,7 +225,25 @@ class DecoderSink {
   // F5 23B @16 low nibble: airflow direction, 0-4 fixed position (0 horizontal,
   // 4 down), 7 swing (confirmed with the iTM, 2026-11-16)
   virtual void on_unit_airflow(uint8_t /*addr*/, uint8_t /*direction*/) {}
+  // B1 46B @17: the setpoint in whole degrees. A sink that keeps the setpoint merges
+  // it with merge_whole_setpoint() so it doesn't drop the tenths from F5 31B.
+  virtual void on_unit_setpoint_whole(uint8_t addr, uint8_t whole) {
+    this->on_unit_value(addr, UnitField::SETPOINT, (float) whole);
+  }
 };
+
+// The setpoint after a whole-degree report (B1): the known setpoint when it rounds
+// down to the same degree (22.5 stays 22.5 on a B1 saying 22), else the whole degree.
+inline float merge_whole_setpoint(float current, uint8_t whole) {
+  if (current == current && (int) (current + 0.001f) == (int) whole) return current;  // current == current: not NaN
+  return (float) whole;
+}
+
+// F5 31B setpoint in degrees, or NaN when out of range
+inline float f5_setpoint(uint8_t whole, uint8_t tenths) {
+  if (whole < 10 || whole > 35) return NAN;
+  return (float) whole + (tenths <= 9 ? (float) tenths / 10.0f : 0.0f);
+}
 
 inline float t88(const uint8_t *frame, size_t offset) {
   return (float) ((uint16_t) (frame[offset] << 8 | frame[offset + 1])) / 256.0f;
@@ -354,8 +373,8 @@ inline void decode_frame(const uint8_t *frame, size_t length, const uint8_t *b1_
     } else if (length == f5_change::LENGTH) {
       sink.on_unit_power(src, frame[f5_change::POWER] != 0);
       if ((frame[f5_change::MODE] & 0xF0) == 0x60) sink.on_unit_mode(src, frame[f5_change::MODE]);
-      const uint8_t setpoint = frame[f5_change::SETPOINT];
-      if (setpoint >= 10 && setpoint <= 35) sink.on_unit_value(src, UnitField::SETPOINT, (float) setpoint);
+      const float setpoint = f5_setpoint(frame[f5_change::SETPOINT], frame[f5_change::SETPOINT_TENTHS]);
+      if (setpoint == setpoint) sink.on_unit_value(src, UnitField::SETPOINT, setpoint);
       sink.on_unit_status(src, frame[f5_change::STATUS]);
       sink.on_unit_role(src, (frame[f5_change::ROLE] & 0x02) != 0);
     }
@@ -365,7 +384,7 @@ inline void decode_frame(const uint8_t *frame, size_t length, const uint8_t *b1_
     sink.on_unit_value(addr, UnitField::PIPE_A, t88(frame, b1_unit::PIPE_A));
     sink.on_unit_value(addr, UnitField::PIPE_B, t88(frame, b1_unit::PIPE_B));
     // whole degrees: byte 18 is not a fraction (flags)
-    sink.on_unit_value(addr, UnitField::SETPOINT, (float) frame[b1_unit::SETPOINT]);
+    sink.on_unit_setpoint_whole(addr, frame[b1_unit::SETPOINT]);
     sink.on_unit_value(addr, UnitField::REMOTE, t88(frame, b1_unit::REMOTE));
     sink.on_unit_value(addr, UnitField::INTAKE, t88(frame, b1_unit::INTAKE));
   } else if (cmd == 0xE9) {

@@ -224,17 +224,17 @@ void DaikinDIII::process_queue_() {
 }
 
 bool DaikinDIII::command_op_(uint8_t group, uint8_t power_byte, uint8_t mode_byte, uint8_t mode_detail,
-                             uint8_t setpoint) {
+                             uint16_t setpoint_tenths) {
   // the hydrobox takes the same command in a longer frame (diii_writer.h)
   const Unit *unit = this->get_unit(group);
   const bool hydrobox = unit != nullptr && unit->hydrobox;
-  if (hydrobox && setpoint != 0) {
+  if (hydrobox && setpoint_tenths != 0) {
     this->note_write_refused("hydrobox setpoint unknown");
     return false;
   }
   uint8_t frame[::diii::HYDROBOX_OPERATION_LEN];
   size_t length = ::diii::build_operation(frame, this->source_address_, group, hydrobox, power_byte, mode_byte,
-                                          mode_detail, setpoint);
+                                          mode_detail, setpoint_tenths);
   return this->enqueue_frame(frame, length);
 }
 
@@ -245,10 +245,11 @@ bool DaikinDIII::command_mode(uint8_t group, uint8_t mode_low) {
   return this->command_op_(group, 0x00, (uint8_t) (0x10 | mode_low), mode_low <= 2 ? mode_low : 0, 0);
 }
 
-bool DaikinDIII::command_setpoint(uint8_t group, uint8_t celsius) {
-  if (celsius < 16) celsius = 16;
-  if (celsius > 32) celsius = 32;
-  return this->command_op_(group, 0x00, 0x00, 0x00, celsius);
+bool DaikinDIII::command_setpoint(uint8_t group, float celsius) {
+  // 0.1-degree steps, 16.0-32.0 like the iTM
+  long tenths = lroundf(celsius * 10.0f);
+  tenths = tenths < 160 ? 160 : tenths > 320 ? 320 : tenths;
+  return this->command_op_(group, 0x00, 0x00, 0x00, (uint16_t) tenths);
 }
 
 bool DaikinDIII::command_fan(uint8_t group, uint8_t speed) {
@@ -514,6 +515,13 @@ void DaikinDIII::on_unit_airflow(uint8_t addr, uint8_t direction) {
 }
 
 // ---- DecoderSink ----
+
+void DaikinDIII::on_unit_setpoint_whole(uint8_t addr, uint8_t whole) {
+  // B1 has whole degrees only: keep the tenths from F5 31B (diii_decoder.h)
+  const Unit *unit = this->find_unit_(addr);
+  if (unit == nullptr) return;
+  this->on_unit_value(addr, UnitField::SETPOINT, ::diii::merge_whole_setpoint(unit->setpoint, whole));
+}
 
 void DaikinDIII::on_unit_value(uint8_t addr, UnitField field, float value) {
   Unit *unit = this->find_unit_(addr);

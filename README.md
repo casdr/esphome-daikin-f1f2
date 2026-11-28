@@ -17,7 +17,7 @@ Per remote-control group (configured on the group master):
 
 | Entity | What it does |
 | --- | --- |
-| **Climate** | Off, heat, cool, fan only; fan auto/low/medium/high; setpoint 16-32 °C in whole degrees. Auto and dry set elsewhere are shown, but can't be set from here. One command switches the whole group. |
+| **Climate** | Off, heat, cool, fan only; fan auto/low/medium/high; setpoint 16-32 °C in 0.1 °C steps (0.5 in the UI by default). Auto and dry set elsewhere are shown, but can't be set from here. One command switches the whole group. |
 | **Airflow direction** (select) | Swing, or a fixed flap position from *Position 0 (horizontal)* to *Position 4 (down)*. |
 | **Setpoint**, **Fan**, **Mode** (sensors) | The group's settings as the bus reports them. |
 | **Remote controller temperature** | The sensor in the wired remote. The climate's current temperature uses it when there is one. |
@@ -204,7 +204,6 @@ F1F2 bus ── ATmega (P1P2Monitor) ──UART 250000── ESP8266 (ESPHome, d
 - Several sensors are hypotheses: discharge temperature, compressor speed and current,
   compressor and fan steps. The protocol notes mark what is confirmed and what isn't.
 - Auto and dry can't be set: their command codes are untested.
-- Setpoints are whole degrees.
 - The outlet selects are write-only. The units don't report the per-outlet setting on
   F1F2, so the select shows what this bridge last sent, and a change on the wired remote
   isn't seen. Only pairs of opposite outlets can be set, only to *Normal* or *Fixed (0)*,

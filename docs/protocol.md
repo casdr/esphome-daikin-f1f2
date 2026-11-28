@@ -271,6 +271,7 @@ F5 aa FF 1C 19 | 80 01 62 02 00 00 00 00 16 00 00 00 00 12 05 00 04 02 04 00 80 
 | 7 | operating mode, see [mode codes](#mode-codes) | confirmed | `f5_change::MODE` |
 | 8 | `00` fan, `01` heat, `02` cool (same as `A5` payload[3]) | *(hyp for fan)* | |
 | 13 | setpoint, whole °C | confirmed | `f5_change::SETPOINT` |
+| 14 | setpoint tenths, `0`-`9` (`16 05` = 22.5, `16 03` = 22.3) | confirmed with the iTM, 2026-11-28 | `f5_change::SETPOINT_TENTHS` |
 | 17 | `00` → `02` on power-on | | |
 | 18 | `0x12` group master, `0x10` member. Constant per role, so a role flag | confirmed | `f5_change::ROLE` |
 | 19 | [status bits](#status-bits) | confirmed | `f5_change::STATUS` |
@@ -353,7 +354,7 @@ The 46-byte frames from indoor units:
 | 11–12 | unknown temperature, 21–24 °C | *(open)* | |
 | 13–14 | pipe temperature A, 8.8 | *(hyp: liquid)*; 19 → 27–41 °C while heating | `b1_unit::PIPE_A` |
 | 15–16 | pipe temperature B, 8.8 | *(hyp: gas)*; 19 → ~42 °C while heating, ≈ Tc | `b1_unit::PIPE_B` |
-| 17–18 | setpoint: byte 17 whole °C, byte 18 flags (`16 00` = 22) | follows every setpoint command | `b1_unit::SETPOINT` |
+| 17–18 | setpoint: byte 17 whole °C, byte 18 flags (`16 00` = 22). The tenths are dropped: 22.5 shows as `16 00` | follows every setpoint command | `b1_unit::SETPOINT` |
 | 30–31 | remote-controller sensor, 8.8 | for 1-04 equal to P1P2 `Temperature_Room`; units without a remote show a fixed `0x1610` (22.06) | `b1_unit::REMOTE` |
 | 43–44 | return air, 8.8 | equal to the `F5` room temperature | `b1_unit::INTAKE` |
 
@@ -587,7 +588,7 @@ A5 <src> <grp> 14 14 | 40 PP MM XX 00 00 SS VV 00 00 80 00×9 | cs      operatio
       MM: 00 = no change, 0x10 | mode
       XX: comes with MM: 00 fan / 01 heat / 02 cool / 02 auto / 06 setpoint only
       SS: setpoint in whole °C, 00 = no change
-      VV: 80 when SS is valid
+      VV: 80 | tenths when SS is valid (85 = .5)
 ```
 
 Each command is answered with an `06` ACK within 2 ms.
@@ -601,7 +602,7 @@ Each command is answered with an `06` ACK within 2 ms.
 | 2 | mode: `00` no change, `0x10 \| mode`, see [mode codes](#mode-codes) | confirmed for fan, heat, cool | `a5_operation::MODE` |
 | 3 | sent with the mode: `00` fan, `01` heat, `02` cool and auto, `06` setpoint only | *(hyp: which setpoint applies, heating or cooling; P1P2 also has separate `Setpoint_Heating`/`Setpoint_Cooling`)* | `a5_operation::MODE_DETAIL` |
 | 6 | setpoint, whole °C (`00` = no change) | confirmed | `a5_operation::SETPOINT` |
-| 7 | `80` when byte 6 is set | a valid flag: it is `80` for 20, 22 and 24 alike. Half degrees are untested. | `a5_operation::SETPOINT_VALID` |
+| 7 | `80` \| tenths when byte 6 is set: `16 85` = 22.5, `16 83` = 22.3, `17 80` = 23.0 | confirmed: the iTM sends 0.1 steps (16.0-32.0) and the unit reports them in `F5` 31 B byte 14 (2026-11-28) | `a5_operation::SETPOINT_VALID` |
 | 10 | `80` in every command from the iTM and from us | *(hyp: "source = central")*; `00` in one command during iTM start-up | `a5_operation::SOURCE_FLAG` |
 | 13 | `00`; `02` in one command during iTM start-up | | |
 
@@ -880,4 +881,3 @@ Examples for unit 0:
 - `A4` and `BD` frames.
 - Outlet pairs: the value for blocking a single outlet, whether member units apply
   the setting, and what P1P2 value `0` means.
-- Whether half-degree setpoints exist on the bus.

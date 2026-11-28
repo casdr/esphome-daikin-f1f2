@@ -86,12 +86,16 @@ class State:
             elif len(b) == 31:
                 u["power"] = "on" if b[6] else "off"
                 u["mode"] = MODES.get(b[7], u.get("mode"))
-                u["setpoint"] = float(b[13])
+                # byte 14: tenths (iTM setpoints in 0.1 steps)
+                u["setpoint"] = b[13] + (b[14] / 10 if b[14] <= 9 else 0.0)
                 u["status"] = b[19]  # (hyp) status bits, 0x20 = heating demand
                 u["master"] = bool(b[18] & 0x02)  # group master 0x12, member 0x10
         elif cmd == 0xB1 and len(b) == 46 and src in B1_TO_DIII:
             u = self.units[B1_TO_DIII[src]]
-            u["setpoint"] = float(b[17])  # byte 18 holds flags
+            # whole degrees only (byte 18 holds flags): keep the tenths from F5 31 B
+            known = u.get("setpoint")
+            if known is None or int(known + 0.001) != b[17]:
+                u["setpoint"] = float(b[17])
             u["pipe_a"] = t88(b, 13)    # (hyp) liquid/gas pipe
             u["pipe_b"] = t88(b, 15)    # (hyp)
             u["remote"] = t88(b, 30)    # remote-controller sensor (1-04 matches P1P2)

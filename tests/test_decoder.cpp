@@ -30,6 +30,11 @@ struct Sink : DecoderSink {
     units[addr].v[(int) field] = value;
     units[addr].has[(int) field] = true;
   }
+  void on_unit_setpoint_whole(uint8_t addr, uint8_t whole) override {
+    const int i = (int) diii::UnitField::SETPOINT;
+    on_unit_value(addr, diii::UnitField::SETPOINT,
+                  diii::merge_whole_setpoint(units[addr].has[i] ? units[addr].v[i] : NAN, whole));
+  }
   void on_unit_power(uint8_t addr, bool on) override { units[addr].power = on; }
   void on_unit_mode(uint8_t addr, uint8_t mode) override { units[addr].mode = mode; }
   void on_unit_fan(uint8_t addr, uint8_t speed) override { units[addr].fan = speed; }

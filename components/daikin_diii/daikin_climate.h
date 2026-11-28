@@ -38,7 +38,9 @@ class DaikinClimate : public climate::Climate, public Parented<DaikinDIII> {
     climate_traits.add_supported_fan_mode(climate::CLIMATE_FAN_HIGH);
     climate_traits.set_visual_min_temperature(16);
     climate_traits.set_visual_max_temperature(32);
-    climate_traits.set_visual_target_temperature_step(1);
+    // the units take 0.1 steps (as the iTM); 0.5 by default, `visual:
+    // target_temperature_step` in YAML overrides it
+    climate_traits.set_visual_target_temperature_step(0.5);
     climate_traits.set_visual_current_temperature_step(0.1);
     // hvac_action from the units' demand bit (group_action in diii_decoder.h)
     climate_traits.add_feature_flags(climate::CLIMATE_SUPPORTS_ACTION);
@@ -71,7 +73,7 @@ class DaikinClimate : public climate::Climate, public Parented<DaikinDIII> {
     const uint32_t now = millis();
     const int bus_power = unit != nullptr ? unit->power : -1;
     const int bus_mode = unit != nullptr ? unit->mode : 0;
-    const int bus_setpoint = (unit != nullptr && !std::isnan(unit->setpoint)) ? (int) lroundf(unit->setpoint) : -1;
+    const int bus_setpoint = (unit != nullptr && !std::isnan(unit->setpoint)) ? to_tenths_(unit->setpoint) : -1;  // 0.1 degrees
     const int bus_fan = unit != nullptr ? unit->fan : -1;
     bool refused = false;
 
@@ -98,14 +100,14 @@ class DaikinClimate : public climate::Climate, public Parented<DaikinDIII> {
       refused |= !ok;
     }
     if (call.get_target_temperature().has_value()) {
-      long celsius = lroundf(*call.get_target_temperature());
-      celsius = celsius < 16 ? 16 : celsius > 32 ? 32 : celsius;
+      int tenths = to_tenths_(*call.get_target_temperature());
+      tenths = tenths < 160 ? 160 : tenths > 320 ? 320 : tenths;
       bool ok = true;
-      if (this->setpoint_.changes((int) celsius, bus_setpoint, bus_setpoint < 0, now)) {
-        ok = this->parent_->command_setpoint(this->group_, (uint8_t) celsius);
-        if (ok) this->setpoint_.commanded((int) celsius, now);
+      if (this->setpoint_.changes(tenths, bus_setpoint, bus_setpoint < 0, now)) {
+        ok = this->parent_->command_setpoint(this->group_, tenths / 10.0f);
+        if (ok) this->setpoint_.commanded(tenths, now);
       }
-      if (ok) this->target_temperature = celsius;
+      if (ok) this->target_temperature = tenths / 10.0f;
       refused |= !ok;
     }
     if (call.get_fan_mode().has_value()) {
@@ -130,7 +132,7 @@ class DaikinClimate : public climate::Climate, public Parented<DaikinDIII> {
     // the bus status confirms commands sent earlier (see PendingSetting)
     this->power_.observe(unit.power);
     this->mode_.observe(unit.mode);
-    this->setpoint_.observe(std::isnan(unit.setpoint) ? -1 : (int) lroundf(unit.setpoint));
+    this->setpoint_.observe(std::isnan(unit.setpoint) ? -1 : to_tenths_(unit.setpoint));
     this->fan_.observe(unit.fan);
     if (unit.hydrobox) {
       this->update_hydrobox_(unit);
@@ -182,6 +184,8 @@ class DaikinClimate : public climate::Climate, public Parented<DaikinDIII> {
   }
 
  protected:
+  static int to_tenths_(float celsius) { return (int) lroundf(celsius * 10.0f); }
+
   climate::ClimateAction action_(const Unit &unit, float current) const {
     bool fan_running = false;
     const int demand = this->parent_->group_demand(this->group_, &fan_running);

@@ -155,7 +155,7 @@ class DaikinDIII : public Component, public uart::UARTDevice, public DecoderSink
   // A unit added as hydrobox gets the long frame; a setpoint for it is refused.
   bool command_power(uint8_t group, bool on);
   bool command_mode(uint8_t group, uint8_t mode_low);  // 0 fan, 1 heat, 2 cool
-  bool command_setpoint(uint8_t group, uint8_t celsius);
+  bool command_setpoint(uint8_t group, float celsius);  // 16.0-32.0 in 0.1 steps
   bool command_fan(uint8_t group, uint8_t speed);      // 0 auto, 1 low, 3 medium, 5 high
   bool command_airflow(uint8_t group, uint8_t direction);  // 0-4 position (0 horizontal), 7 swing
   // per-outlet flap setting of one unit (master or member), by pair of opposite outlets
@@ -196,13 +196,15 @@ class DaikinDIII : public Component, public uart::UARTDevice, public DecoderSink
   void on_outdoor_module(uint8_t state, uint8_t sub_state) override;
   void on_oil_return(bool active) override;
   void on_unit_airflow(uint8_t addr, uint8_t direction) override;
+  void on_unit_setpoint_whole(uint8_t addr, uint8_t whole) override;
 
  protected:
   Unit *find_unit_(uint8_t addr);
   void handle_line_(const char *line);
   void publish_raw_(char kind, const char *payload);
   void set_last_write_(const std::string &text);
-  bool command_op_(uint8_t group, uint8_t power_byte, uint8_t mode_byte, uint8_t mode_detail, uint8_t setpoint);
+  bool command_op_(uint8_t group, uint8_t power_byte, uint8_t mode_byte, uint8_t mode_detail,
+                   uint16_t setpoint_tenths);
   bool check_enqueue_(::diii::WriteResult result, bool setting);
   void load_budget_();
   void save_budget_();

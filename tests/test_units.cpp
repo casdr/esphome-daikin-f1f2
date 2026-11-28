@@ -392,6 +392,47 @@ static void test_outlet_pair() {
 // Operation command 40: the builder makes the iTM's own frames (source 0x0A,
 // with checksum) for an indoor unit and for the hydrobox (35 bytes, seen
 // 2026-11-16: heat + on at 05:08:28, off at 21:07:02).
+static void test_setpoint_tenths() {
+  // F5 31B byte 13 whole degrees, byte 14 tenths (iTM at 22.3 and 22.5, 2026-11-28)
+  CHECK(f5_setpoint(22, 3) == 22.3f);
+  CHECK(f5_setpoint(22, 5) == 22.5f);
+  CHECK(f5_setpoint(23, 0) == 23.0f);
+  CHECK(f5_setpoint(22, 0x10) == 22.0f);  // not a tenth: ignored
+  CHECK(std::isnan(f5_setpoint(0, 0)));
+  // B1 reports whole degrees: it keeps the tenths of the same degree only
+  CHECK(merge_whole_setpoint(22.5f, 22) == 22.5f);
+  CHECK(merge_whole_setpoint(22.0f, 22) == 22.0f);
+  CHECK(merge_whole_setpoint(22.5f, 23) == 23.0f);
+  CHECK(merge_whole_setpoint(NAN, 22) == 22.0f);
+
+  struct Sink : DecoderSink {
+    float setpoint = NAN;
+    void on_unit_value(uint8_t, UnitField field, float value) override {
+      if (field == UnitField::SETPOINT) setpoint = value;
+    }
+    void on_unit_setpoint_whole(uint8_t addr, uint8_t whole) override {
+      on_unit_value(addr, UnitField::SETPOINT, merge_whole_setpoint(setpoint, whole));
+    }
+    void on_unit_power(uint8_t, bool) override {}
+    void on_unit_mode(uint8_t, uint8_t) override {}
+    void on_unit_fan(uint8_t, uint8_t) override {}
+    void on_unit_status(uint8_t, uint8_t) override {}
+    void on_system_value(SystemField, float) override {}
+    void on_compressor(uint8_t) override {}
+    void on_clock(uint8_t, uint8_t) override {}
+  } sink;
+  uint8_t b1_to_diii[256];
+  for (auto &entry : b1_to_diii) entry = 0xFF;
+  b1_to_diii[0x0A] = 0x07;
+  auto f5 = hex("F507FF1C19800061010000000016050000001202000402000080000000002E");
+  decode_frame(f5.data(), f5.size(), b1_to_diii, sink);
+  CHECK(sink.setpoint == 22.5f);
+  // B1 of 1-07 (index 0x0A) right after it, byte 17 = 22: still 22.5
+  auto b1 = hex("B10A000828636D67C0180A152019B01A301600C0000000000000000000FD10F1500000000D8B0000060000115F33");
+  decode_frame(b1.data(), b1.size(), b1_to_diii, sink);
+  CHECK(sink.setpoint == 22.5f);
+}
+
 static void test_operation() {
   const struct { uint8_t dst; bool hydrobox; uint8_t pp, mm, xx, sp; const char *frame; } cases[] = {
       {0x10, true, 0x00, 0x11, 0x01, 0, "A50A10141D4000110100000000000080000000000000000000000000000000000000E3"},
@@ -413,8 +454,13 @@ static void test_operation() {
   size_t length = build_operation(frame, 0x30, 0x07, false, 0x03, 0, 0, 0);
   auto want = hex(POWER_ON);
   CHECK(length == OPERATION_LEN && want.size() == length && memcmp(frame, want.data(), length) == 0);
-  length = build_operation(frame, 0x30, 0x07, false, 0x00, 0x00, 0x00, 22);
+  length = build_operation(frame, 0x30, 0x07, false, 0x00, 0x00, 0x00, 220);
   CHECK(frame[11] == 22 && frame[12] == 0x80 && frame[15] == 0x80);
+  // 22.5 as the iTM sends it (2026-11-28): byte 12 = 0x80 | tenths
+  length = build_operation(frame, 0x0A, 0x07, false, 0x00, 0x00, 0x00, 225);
+  frame[length] = frame_checksum(frame, length);
+  want = hex("A50A07141440000000000016850000800000000000000000006C");
+  CHECK(want.size() == length + 1 && memcmp(frame, want.data(), want.size()) == 0);
   // the queue takes the long frame from our own source and adds the checksum
   WriteQueue queue;
   queue.set_enabled(true);
@@ -672,6 +718,7 @@ int main() {
   test_decoder_known_values();
   test_airflow();
   test_outlet_pair();
+  test_setpoint_tenths();
   test_operation();
   test_group_action();
   test_known_frames();
