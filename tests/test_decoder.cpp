@@ -39,11 +39,20 @@ struct Sink : DecoderSink {
     sys[(int) field] = value;
     sys_has[(int) field] = true;
   }
-  void on_compressor(uint8_t state) override { compressor = state; }
+  void on_compressor(uint8_t state) override {
+    compressor = state;
+    detector.compressor(state);
+    if (defrost >= 0) defrost = detector.active();
+  }
   void on_clock(uint8_t hour, uint8_t minute) override { hh = hour, mm = minute; }
   void on_unit_role(uint8_t addr, bool master) override { units[addr].master = master; }
-  void on_defrost(bool active) override { defrost = active; }
-  int defrost = -1;
+  void on_outdoor_module(uint8_t state, uint8_t sub_state) override {
+    detector.module(state, sub_state);
+    defrost = detector.active();
+  }
+  void on_oil_return(bool active) override { oil_return = active; }
+  DefrostDetector detector;
+  int defrost = -1, oil_return = -1;
 };
 
 int main(int argc, char **argv) {
@@ -99,7 +108,7 @@ int main(int argc, char **argv) {
   for (int field = 0; field < (int) SystemField::COUNT; field++)
     if (sink.sys_has[field]) printf(" %s=%.2f", system_names[field], sink.sys[field]);
   printf(" compressor=%d clock=%02d:%02d", sink.compressor, sink.hh, sink.mm);
-  if (sink.defrost >= 0) printf(" defrost=%d", sink.defrost);
+  if (sink.defrost >= 0) printf(" defrost=%d oil_return=%d", sink.defrost, sink.oil_return);
   printf("\n");
   fprintf(stderr, "frames=%ld valid=%ld\n", frames, valid);
   return 0;

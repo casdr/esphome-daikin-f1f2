@@ -61,6 +61,9 @@ class State:
     def __init__(self) -> None:
         self.units: dict[int, dict[str, Any]] = {a: {} for a in UNITS}
         self.outdoor: dict[str, Any] = {}
+        # defrost detection, as DefrostDetector in diii_decoder.h
+        self._compressor = 0
+        self._module_state = 0
         self.commands: list[tuple[float | None, str]] = []
 
     def feed(self, b: bytes, t: float | None = None) -> None:
@@ -96,12 +99,25 @@ class State:
             u["t11"] = t88(b, 11)       # unknown temperature (hyp)
         elif cmd == 0xE9 and len(b) in (46, 43) and b[3] == 0x10 and b[5] == 0x65:  # 43 B: ERQ (hyp)
             self.outdoor["compressor"] = {0: "off", 1: "start", 2: "on"}.get(b[11], f"0x{b[11]:02X}")
+            self._compressor = b[11]
+            if b[11] == 0 and "defrost" in self.outdoor:
+                self.outdoor["defrost"] = False
             self.outdoor["t_evap"] = sm8(b, 15)  # (hyp) Te, low-pressure saturation
             self.outdoor["t_cond"] = sm8(b, 17)  # Tc, sign-magnitude; ~ambient idle, ~42 heating
             self.outdoor["current"] = (b[35] << 8 | b[36]) / 10  # (hyp) compressor current, A
             self.outdoor["comp_speed_total"] = float(b[25] << 8 | b[26])  # = 3 x (module 1 + module 2 speed)
         elif cmd == 0xE9 and len(b) == 46 and b[3] == 0x10 and b[5] == 0x6A:
-            self.outdoor["defrost"] = 0x07 in (b[12], b[14], b[16])  # (hyp) defrost or oil return
+            # defrost: module 1 leaves normal operation (02 -> 01, sub-state 00/05) while the
+            # compressor runs; it ends at 02, oil return (07) or residual operation (09)
+            state, sub = b[11], b[12]
+            active = bool(self.outdoor.get("defrost"))
+            if not active and state == 0x01 and sub in (0x00, 0x05) and self._module_state == 0x02 and self._compressor == 2:
+                active = True
+            elif active and (state == 0x02 or sub in (0x07, 0x09)):
+                active = False
+            self.outdoor["defrost"] = active
+            self._module_state = state
+            self.outdoor["oil_return"] = 0x07 in (b[12], b[14], b[16])
         elif cmd == 0xE9 and len(b) == 44 and b[3] == 0x10:
             self.outdoor["outdoor_air"] = sm8(b, 21)  # sign-magnitude, like Te
         elif cmd == 0xE9 and len(b) == 41 and b[5] == 0xE0 and b[11] in (0x12, 0x13):

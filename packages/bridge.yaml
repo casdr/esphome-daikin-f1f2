@@ -109,7 +109,8 @@ sensor:
 binary_sensor:
   - platform: daikin_diii
     compressor_running: {name: Compressor}
-    defrost: {name: Defrost or oil return}
+    defrost: {name: Defrost}
+    oil_return: {name: Oil return}
 
 text_sensor:
   - platform: daikin_diii

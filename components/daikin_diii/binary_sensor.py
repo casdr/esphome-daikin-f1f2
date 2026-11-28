@@ -8,9 +8,10 @@ from . import CONF_DAIKIN_DIII_ID, CONF_UNIT, DaikinDIII
 DEPENDENCIES = ["daikin_diii"]
 
 UNIT_BINARY = {"power": (0, DEVICE_CLASS_POWER), "heating_active": (1, DEVICE_CLASS_HEAT)}
-# defrost: E9 page 6A sub-state 07 on an outdoor module (hyp: defrost or oil return)
+# defrost: module 1 leaves normal operation while the compressor runs (E9 pages 65 + 6A);
+# oil_return: an outdoor module in sub-state 07 (until v0.3.x this was the defrost sensor)
 SYSTEM_BINARY = {"compressor_running": (0, DEVICE_CLASS_RUNNING), "raw_mqtt_connected": (1, DEVICE_CLASS_CONNECTIVITY),
-                 "defrost": (2, None)}
+                 "defrost": (2, None), "oil_return": (3, None)}
 
 
 def _validate(config):
@@ -32,6 +33,7 @@ CONFIG_SCHEMA = cv.All(
                 if device_class
             },
             cv.Optional("defrost"): binary_sensor.binary_sensor_schema(icon="mdi:snowflake-melt"),
+            cv.Optional("oil_return"): binary_sensor.binary_sensor_schema(icon="mdi:oil"),
         }
     ),
     _validate,

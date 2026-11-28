@@ -41,7 +41,8 @@ For the system:
 | **Evaporating / condensing temperature** | Te and Tc of the refrigerant circuit. |
 | **Discharge temperature** per outdoor module | Compressor discharge *(hypothesis)*. |
 | **Compressor** | Running or not. |
-| **Defrost or oil return** | An outdoor module in sub-state `07`, a recurring 9-minute operation that looks more like oil return than defrost *(hypothesis)*. |
+| **Defrost** | The outdoor unit is defrosting: about 11 minutes, every 1-2.5 hours below about 5 °C outside. |
+| **Oil return** | The outdoor unit is returning oil to the compressor: about 9 minutes, every 8-9 hours of compressor running. |
 | **System clock** | The VRV's own clock. The bus sends it every 10 minutes; the bridge counts the minutes in between, and stops counting when no update has come for 15 minutes, so a lost bus shows as a clock that stands still. |
 | Diagnostics | Bus frames OK / with errors, write queue, last bus command, compressor speed, current, compressor and fan steps (partly guessed). |
 
@@ -201,7 +202,7 @@ F1F2 bus ── ATmega (P1P2Monitor) ──UART 250000── ESP8266 (ESPHome, d
   system, I'd like to help get it working: [docs/debugging.md](docs/debugging.md) shows how
   to make a bus log and a survey for a *New system report*.
 - Several sensors are hypotheses: discharge temperature, compressor speed and current,
-  compressor and fan steps, defrost. The protocol notes mark what is confirmed and what isn't.
+  compressor and fan steps. The protocol notes mark what is confirmed and what isn't.
 - Auto and dry can't be set: their command codes are untested.
 - Setpoints are whole degrees.
 - The outlet selects are write-only. The units don't report the per-outlet setting on

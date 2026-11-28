@@ -672,6 +672,8 @@ void DaikinDIII::on_system_value(SystemField field, float value) {
 }
 
 void DaikinDIII::on_compressor(uint8_t state) {
+  this->defrost_.compressor(state);
+  this->publish_defrost_();
 #ifdef USE_BINARY_SENSOR
   auto *sensor = this->system_binary_[(int) SystemBinary::COMPRESSOR];
   if (sensor != nullptr) sensor->publish_state(state == 2);
@@ -711,9 +713,22 @@ void DaikinDIII::on_unit_role(uint8_t addr, bool master) {
              addr, master ? "master" : "member", configured_master ? "master" : "member", unit->group);
 }
 
-void DaikinDIII::on_defrost(bool active) {
+void DaikinDIII::on_outdoor_module(uint8_t state, uint8_t sub_state) {
+  this->defrost_.module(state, sub_state);
+  this->publish_defrost_();
+}
+
+void DaikinDIII::publish_defrost_() {
 #ifdef USE_BINARY_SENSOR
   auto *sensor = this->system_binary_[(int) SystemBinary::DEFROST];
+  if (sensor != nullptr && (!sensor->has_state() || sensor->state != this->defrost_.active()))
+    sensor->publish_state(this->defrost_.active());
+#endif
+}
+
+void DaikinDIII::on_oil_return(bool active) {
+#ifdef USE_BINARY_SENSOR
+  auto *sensor = this->system_binary_[(int) SystemBinary::OIL_RETURN];
   if (sensor != nullptr) sensor->publish_state(active);
 #endif
 }

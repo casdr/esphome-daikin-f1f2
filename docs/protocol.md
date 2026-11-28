@@ -190,7 +190,7 @@ gets the same ACK and the same status change as one from the iTM.
 | `F5` 10/8 B, page `91` | each unit → `FF` | hourly at hh:10:40, after the iTM's `E5 … 50 91` |
 | `B1` | unit index → `00` | in bursts; sensor values change about every 50 s |
 | `A9` 24 B | `00` → each unit index | periodic, per unit |
-| `A9` 46 B, page `6A` | `00` → each unit index | in bursts, trigger unknown |
+| `A9` 46 B, page `6A` | `00` → each unit index | in bursts, at defrost steps and system start/stop |
 | `A9` 16 B | `00` → unit index | on power-off |
 | `E9` | `00` → `FF` | per page, every 20 s to 10 min, see [`E9`](#e9-outdoorsystem-data) |
 | `AD` | unit index → `00` | on events (thermo on/off) |
@@ -392,12 +392,12 @@ Tc and outside air over logs that include about 35 min of compressor running
 | `65` | | | | 15–16 (8.8, sign-mag) | Te, evaporating temperature (low pressure) | ≈ outdoor when idle, drops to −11 °C while heating | `e9_page_65::T_EVAP` |
 | `65` | | | | 17–18 (8.8, sign-magnitude) | Tc, condensing temperature (high pressure) | ≈ outdoor when idle, up to 42 °C; = indoor gas pipes. Idle at −4 °C outside it went to `80 30` = −0.19 °C (2026-11-22) | `e9_page_65::T_COND` |
 | `65` | | | | 25–26 (16-bit) | compressor speed, total of both modules: 0 idle, 64–756 running; = 3 × (`E0`/02 byte 32 + `E0`/03 byte 32), r = 0.98 | unit unknown, see below | `e9_page_65::COMP_SPEED_TOTAL` |
-| `65` | | | | 27 | outside air, whole °C, second value | r = 0.91; a steady 3.5 °C above page `67` (sd 0.3 over 930 idle frames), see below | |
+| `65` | | | | 27 | outside air, whole °C, second value | r = 0.91; above page `67` by 1.9 °C idle and 1.1 °C running (2026-11-22..28), see below | |
 | `65` | | | | 35–36 (16-bit) | `00 02` idle, up to `01 98` (40.8 A) running | *(hyp: compressor current in 0.1 A, see below)*; r = 0.94 with the compressor speed | `e9_page_65::CURRENT` |
-| `65` | | | | 37 | `26`–`36`, `22` after an idle weekend | not an idle/running flag as first thought: it changes slowly *(hyp: a temperature in whole °C, 34 after a weekend off, 38 idle on working days, up to 54 running)* | |
+| `65` | | | | 37 | `26`–`36`, `22` after an idle weekend | not an idle/running flag as first thought: it changes slowly and follows `E0`/12 byte 18 (r = 0.77) and the discharge temperature (r = 0.75) *(hyp: a temperature in whole °C, 34 after a weekend off, 38 idle on working days, up to 54 running)* | |
 | `67` | 44 | 10 | 20 s | 21–22 (8.8, sign-magnitude) | outside air | r = 1.00; matched a local weather report and a car thermometer within 1 °C. Below 0 °C (night of 2026-11-20) it crossed zero smoothly as sign-magnitude, e.g. `00 22` → `80 02` → `80 36` = 0.13 → −0.01 → −0.21 °C; it read −7 °C while the compressor ran in heating at about −1 °C, so it is not reliable during a heating run in cold weather | `e9_page_67::OUTDOOR` |
 | `67` | | | | 41–42 (8.8) | Tc (copy of `65` byte 17) | r = 1.00 | |
-| `E0`/12,13 | 41 | 1C | 60 s | 15 | outside air, whole °C (per module), second value | r = 0.95; module 2 a steady 3.5 °C above page `67`, module 1 about 6 °C above and less steady, see below | |
+| `E0`/12,13 | 41 | 1C | 60 s | 15 | outside air, whole °C (per module), second value | r = 0.95; above page `67` (on an idle weekend module 2 by 3.5 °C, module 1 by about 6 °C), see below | |
 | | | | | 16 | discharge temperature, whole °C, decoded as sign-magnitude like the other bytes on this page (not yet seen below 0) | *(hyp)*; 13 °C idle → 48 °C running, r(Tc) = 0.96 | `e9_page_e0::DISCHARGE` |
 | | | | | 18 | 27–42 °C, rises slowly, stays high afterwards; still 25–30 after two idle days at 4–14 °C outside | *(hyp: compressor body, kept warm by the crankcase heater; an inverter fin would cool down)* | |
 | | | | | 19–21, 25 | heat-exchanger temperatures, drop below ambient in heating | *(hyp)* | |
@@ -411,12 +411,12 @@ Tc and outside air over logs that include about 35 min of compressor running
 | | | | | 22, 24 | 0 → mostly 2–15, at most 0x67/0x7E running | correlates poorly with the compressor speed (r = 0.26) | |
 | | | | | 26 | `02` while running | | |
 | | | | | 32 | compressor speed of the module: 0 off, 20–130 running, continuous | *(hyp)*; ×3 summed over both modules = page `65` bytes 25–26 | `e9_page_e0::COMP_SPEED` |
-| | | | | 38 | 0 → 0x4F/0x50/0x59 running | *(hyp: fan rpm step)* | |
+| | | | | 38 | 0 → `50` (80) in 94% of running frames, also `1C`, `4F` | not a fan step: nearly constant while running (2026-11-22..28) | |
 | `E0` | 46 | 1C | 60 s | 14–15 | `40 00` or `20 00` idle / `52 02` running | `20 00` on an idle weekend | |
 | | | | | 17–18 (8.8) | outside air | r = 1.00 | |
-| | | | | 25 | outside air, whole °C, second value | a steady 3.5 °C above page `67`, see below | |
+| | | | | 25 | outside air, whole °C, second value | above page `67`, see below | |
 | | | | | 30, 36, 38, 42 | 0/small idle, large running | *(hyp: run counters / capacity)* | |
-| `6A` | 46 | 10 | on change | 11–16 | 3× (state, sub-state): `01 00` idle, `02 00` running, `01 09` right after stop, `01 07` during a 9-minute special operation, see below | *(hyp: per module; 09 = residual/oil return, 07 = oil return or another recovery operation)* | `e9_page_6a::SUB_STATE_1`, `e9_page_6a::SUB_STATE_2`, `e9_page_6a::SUB_STATE_3` |
+| `6A` | 46 | 10 | on change | 11–16 | 3× (state, sub-state) per module: `02 00` normal operation, `01 00` not heating/cooling (idle, or the first part of a defrost), `01 05`/`01 06`/`01 0F` end of a defrost, `01 06` also cold start-up, `01 07` oil return, `01 09` residual operation after a stop; see below | confirmed for 07 (oil return) and the defrost sequence, 2026-11-23..27 | `e9_page_6a::STATE_1`, `e9_page_6a::SUB_STATE_1`, `e9_page_6a::SUB_STATE_2`, `e9_page_6a::SUB_STATE_3` |
 | | | | | 17–19 | `20 10 10` / `20 20 20` | | |
 | | | | | 20–23 | `07 D0 14 C8` constant (= 2000, 5320) | | |
 | `6E` | 45 | 0C | 30 s | 11 | `00`/`0C` | | |
@@ -430,10 +430,12 @@ Tc and outside air over logs that include about 35 min of compressor running
 
 There are two outside air values on the bus. Page `67` bytes 21–22 (and `E0` 46 B bytes
 17–18, the same value) is the one the component reports. Page `65` byte 27, `E0`/13 byte 15
-and `E0` 46 B byte 25 hold a second one in whole degrees, a steady 3.5 °C higher over two idle
-days (2026-11-21/22); the iTM shows this second value (10 °C against 6.5 °C). Which of the
-two is closer to the real outside air is open: against the met.no forecast the higher one
-fitted better on a clear frosty night and the lower one better at midday.
+and `E0` 46 B byte 25 hold a second one in whole degrees, higher by 3.5 °C over two idle
+days (2026-11-21/22) and over the following week by 1.9 °C (sd 1.2) with the compressor
+idle and 1.1 °C (sd 0.6) with it running; the iTM shows this second value (10 °C against
+6.5 °C). Which of the two is closer to the real outside air is open: against the met.no
+forecast the higher one fitted better on a clear frosty night and the lower one better at
+midday.
 
 The compressor speed and current fields come from a finding on an ERQ outdoor unit
 ([P1P2MQTT discussion #293](https://github.com/Arnold-n/P1P2MQTT/discussions/293)): on its 43-byte page `65`,
@@ -457,15 +459,16 @@ yet seen with the compressor running)*.
 Page `6D` comes once a day, always the same frame:
 `E9 00 FF 10 1A | 6D 6D 67 C0 18 01 81 00 … 00 | 3C`. After the system ID come `01`
 (outdoor system 1, as in the other pages), `81` and 19 zero bytes. On the test system it
-came at 11:40:54, 11:41:03 and 11:41:13 on three days in a row, about 10 s later each
-day *(hyp: a 24-hour timer in the outdoor unit, counted from its own start, that runs
-slightly slow)*. The zero payload suggests an event or status page with nothing to
+came at 11:40:54, 11:41:03 and 11:41:13 on three days in a row, and 11:42:03 to 11:42:53
+on 23–28 November: exactly 10 s later every day, so a 24-hour timer in the outdoor unit
+that runs 10 s a day slow, counted from its own start *(hyp)*. The zero payload suggests an event or status page with nothing to
 report *(hyp)*.
 
-Sub-state `07` on modules 1 and 2 (`01 07 01 07 02 00`) is a recurring operation of
-about 9 minutes, seen 6 times in three days at 7–9 °C outside, sometimes 8 h 15 min
-apart. It was first taken for a defrost; a closer trace of two of them (2026-11-18)
-makes that unlikely:
+**Oil return.** Sub-state `07` on modules 1 and 2 (`01 07 01 07 02 00`) is the oil return.
+It lasts about 9 minutes and comes every 8.4–8.7 hours of compressor running (eight in a
+row, 2026-11-23..27, at −4.4 to +5.5 °C outside), which matches Daikin's oil return "every
+8 hours" of operation; once it came after 5 hours. The component reports it as *Oil return*.
+A closer trace of two of them (2026-11-18):
 
 - For about 4 minutes page `65` byte 36 (the low byte of the current) climbs from about 125 to 245 with
   Te at +1…+6 °C.
@@ -481,9 +484,30 @@ makes that unlikely:
   went cold (10–25 °C) for several minutes while the others stayed hot; not after the
   afternoon one on 18/11, when the compressor stopped. The others weren't traced.
 
-*(hyp: an oil-return or recovery operation; Daikin VRV systems run oil return at
-intervals.)* The component's binary sensor is called *Defrost or oil return* for this
-reason.
+**Defrost.** Below about 5 °C outside the system defrosts, 6–10 times a day in the week
+of 2026-11-23 (38 in all): every 51–56 minutes at −2 to −4 °C in the morning, every
+2–2.5 hours around 0 to +2 °C. The compressor keeps running (page `65` byte 11 stays `02`)
+and page `6A` goes through:
+
+| page `6A` | duration | what happens |
+|---|---|---|
+| `02 00 02 00 02 00` | | normal heating; Te falls as frost builds up, to −25…−49 °C just before the defrost |
+| `01 00 01 00 01 00` | 6–12 min, median 7 | defrost: the indoor gas pipes drop from about 42 to 27 °C (the indoor units stop heating), Tc drops to 23–30 °C |
+| `01 05 01 06 01 0F` | about 1 min | end of the defrost, speed 120 |
+| `01 05 01 06 02 00` | 1–3 min | restart, speed 120–220 |
+| `02 00 02 00 02 00` | | heating again, 10–16 minutes after the start |
+
+The indoor units report status `03` (on, no fan) during most of it. The component's
+*Defrost* sensor follows this: on when module 1 goes from `02` to `01` with sub-state `00`
+or `05` while the compressor runs, off again at `02`, `07`, `09` or a compressor stop. A
+start (`01` → `02`) and a stop never trigger it, because it has to start from `02`.
+
+The very low evaporating temperatures (below −30 °C, 270 readings in the week, lowest
+−49.1 °C) all come in the minutes before a defrost.
+
+**Start-up.** After a long stop in the cold (−4 to −1.5 °C) the system starts with
+`01 06 01 06 02 00` for about 15 minutes at speed 143–148 before normal operation *(hyp:
+start-up control)*.
 
 ### `A5`: setting command
 
@@ -512,7 +536,7 @@ Then per master:
 |--------|---------|
 | 24 B (`A9 00 nn 10 12`) | nearly identical for every unit; byte 18 = `1B`/`09`/`1A` |
 | 16 B | sent on power-off; byte 13 `07` → `03`. Seen for nn = 08, 09, 0B, 0C when group 1-04 was switched off |
-| 46 B (`A9 00 nn 10 28`) | page `6A`, the per-module outdoor state of `E9` page `6A`, sent to each unit in bursts. Not on every change of outdoor state: on 2026-11-18 page `6A` changed 15 times and there was one burst, right after all groups were switched off. The trigger is unknown |
+| 46 B (`A9 00 nn 10 28`) | page `6A`, the per-module outdoor state of `E9` page `6A`, sent to each unit in bursts of 17 or 34 frames. In the week of 2026-11-23 all 116 bursts came at a defrost step or at the start or stop of the system; bytes 11–16 carry the `6A` sub-states (`01 00 01 00 01 05`, `01 09 01 09 01 09`, ...). On 2026-11-18 (no defrosts) there was one burst, right after all groups were switched off |
 
 46 B layout: `A9 00 dd 10 28 | 6A 6D 67 C0 18 01 02 00 02 00 02 00 SS 07 D0 14 C8 …`.
 SS (payload[13]) steps `10` → `11` → `12` → `20`: `20` = standby/stopped for that
@@ -848,10 +872,10 @@ Examples for unit 0:
 - `FD` and `E5` in general.
 - Most `E9` fields marked *(hyp)* above, and what "module 1/2" are on a single-casing
   outdoor unit (the RXQ20 and ERQ report module 1 only).
-- `E9` page `6D`, daily: what it reports.
-- The two outside air values (3.5 °C apart): which sensor or correction each one is.
-- `E9` page `6A` sub-state `07` (oil return?) and `F5` byte 19 `81` on the 2-xx units.
-- What triggers the `A9` 46 B bursts.
+- `E9` page `6D`, daily: what it reports (it comes every 24 h + 10 s).
+- The two outside air values (1–3.5 °C apart): which sensor or correction each one is.
+- `F5` byte 19 `81` on the 2-xx units (not seen in the week of 2026-11-23).
+- `E9` page `6A` sub-state `0F` (module 3, end of a defrost) and `06` at a cold start.
 - `A5` payload[3] (which setpoint applies?), payload[10] and payload[13].
 - `A4` and `BD` frames.
 - Outlet pairs: the value for blocking a single outlet, whether member units apply

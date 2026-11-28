@@ -63,7 +63,7 @@ def main() -> None:
     hour, minute = (int(part) for part in clock.split(":"))
     system_out.append(f"compressor={compressor} clock={hour:02d}:{minute:02d}")
     if "defrost" in outdoor:
-        system_out.append(f"defrost={int(bool(outdoor['defrost']))}")
+        system_out.append(f"defrost={int(bool(outdoor['defrost']))} oil_return={int(bool(outdoor['oil_return']))}")
     print(" ".join(system_out))
 
 

@@ -41,7 +41,7 @@ using ::diii::UnitField;
 
 enum class UnitBinary : uint8_t { POWER = 0, HEATING = 1, COUNT };
 enum class UnitText : uint8_t { MODE = 0, FAN = 1, COUNT };
-enum class SystemBinary : uint8_t { COMPRESSOR = 0, RAW_MQTT = 1, DEFROST = 2, COUNT };
+enum class SystemBinary : uint8_t { COMPRESSOR = 0, RAW_MQTT = 1, DEFROST = 2, OIL_RETURN = 3, COUNT };
 enum class DiagSensor : uint8_t { FRAMES_OK = 0, FRAMES_ERR = 1, WRITE_QUEUE = 2, WRITES_LOST = 3, COUNT };
 // per group master: setting commands seen on the bus (any source), write budget left
 enum class UnitDiag : uint8_t { COMMANDS = 0, BUDGET = 1, COUNT };
@@ -193,7 +193,8 @@ class DaikinDIII : public Component, public uart::UARTDevice, public DecoderSink
   void on_compressor(uint8_t state) override;
   void on_clock(uint8_t hour, uint8_t minute) override;
   void on_unit_role(uint8_t addr, bool master) override;
-  void on_defrost(bool active) override;
+  void on_outdoor_module(uint8_t state, uint8_t sub_state) override;
+  void on_oil_return(bool active) override;
   void on_unit_airflow(uint8_t addr, uint8_t direction) override;
 
  protected:
@@ -224,6 +225,8 @@ class DaikinDIII : public Component, public uart::UARTDevice, public DecoderSink
   uint32_t last_stats_ms_{0};
   // the VRV clock, run on between its broadcasts (BusClock in diii_decoder.h)
   ::diii::BusClock clock_;
+  ::diii::DefrostDetector defrost_;
+  void publish_defrost_();
   int clock_published_{-1};  // minute of day last published, -1 none
   void publish_clock_(uint32_t now_ms);
 #ifdef DAIKIN_DIII_RAW_MQTT

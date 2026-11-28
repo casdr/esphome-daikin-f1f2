@@ -140,7 +140,7 @@ struct Capture : DecoderSink {
     if (field == UnitField::DEMAND_STEP) step = value;
   }
   void on_unit_role(uint8_t, bool is_master) override { calls++, master = is_master; }
-  void on_defrost(bool active) override { calls++, defrost = active; }
+  void on_oil_return(bool active) override { calls++, defrost = active; }
   void on_unit_power(uint8_t, bool on) override { calls++, power = on; }
   void on_unit_mode(uint8_t, uint8_t unit_mode) override { calls++, mode = unit_mode; }
   void on_unit_fan(uint8_t, uint8_t speed) override { calls++, fan = speed; }
@@ -180,7 +180,7 @@ static void test_decoder_known_values() {
   CHECK(capture_truncated.calls == 0);
 
   // Real frames from a bus log (docs/protocol.md, "Overnight log check"):
-  // E9 page 6A with modules 1+2 in sub-state 07 (06:55:20) and back to normal
+  // E9 page 6A with modules 1+2 in sub-state 07 (oil return, 06:55:20) and back to normal
   Capture capture_defrost, capture_normal;
   auto defrost = hex("E900FF10286A6D67C0180101070107020020202007D014C80000000000000000000000000000000000000000008D");
   decode_frame(defrost.data(), defrost.size(), b1_to_diii, capture_defrost);
@@ -582,6 +582,46 @@ static void test_known_frames() {
   CHECK(frame_signature(odd.data(), odd.size()) != frame_signature(status.data(), status.size()));
 }
 
+// Defrost cycles as on the bus, 2026-11-23..27: compressor state (page 65) and module 1
+// state/sub-state (page 6A).
+static void test_defrost_detector() {
+  DefrostDetector detector;
+  // compressor start: 01 00 -> 02 00 is no defrost, also with the compressor at 2 first
+  detector.compressor(2);
+  detector.module(0x01, 0x00);
+  CHECK(!detector.active());
+  detector.module(0x02, 0x00);
+  CHECK(!detector.active());
+  // defrost: 02 -> 01 00 (7 min) -> 01 05 -> 02 00
+  detector.module(0x01, 0x00);
+  CHECK(detector.active());
+  detector.compressor(2);
+  CHECK(detector.active());
+  detector.module(0x01, 0x05);
+  CHECK(detector.active());
+  detector.module(0x02, 0x00);
+  CHECK(!detector.active());
+  // oil return (07) and residual operation (09) are no defrost
+  detector.module(0x01, 0x07);
+  CHECK(!detector.active());
+  detector.module(0x02, 0x00);
+  detector.module(0x01, 0x09);
+  CHECK(!detector.active());
+  // a stop: 02 -> 01 00 while page 65 still says running, then the compressor stops
+  DefrostDetector stop;
+  stop.compressor(2);
+  stop.module(0x02, 0x00);
+  stop.module(0x01, 0x00);
+  CHECK(stop.active());  // indistinguishable from a defrost start for a few seconds
+  stop.compressor(0);
+  CHECK(!stop.active());
+  // cold start-up control (01 06) after a long stop is no defrost
+  DefrostDetector cold;
+  cold.compressor(2);
+  cold.module(0x01, 0x06);
+  CHECK(!cold.active());
+}
+
 static void test_bus_clock() {
   BusClock clock;
   CHECK(clock.minute_of_day(0) == -1);  // nothing broadcast yet
@@ -636,6 +676,7 @@ int main() {
   test_group_action();
   test_known_frames();
   test_bus_clock();
+  test_defrost_detector();
   test_budget_many_groups();
   if (failures) {
     std::printf("%d check(s) failed\n", failures);

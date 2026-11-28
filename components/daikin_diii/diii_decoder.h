@@ -83,6 +83,7 @@ static const size_t OUTDOOR = 21;  // 8.8 sign-magnitude (like Te)
 // three outdoor modules as (state, sub-state) pairs at 11..16
 namespace e9_page_6a {
 static const size_t LENGTH = 46;
+static const size_t STATE_1 = 11;  // module 1: 01 not heating/cooling, 02 normal operation
 static const size_t SUB_STATE_1 = 12;
 static const size_t SUB_STATE_2 = 14;
 static const size_t SUB_STATE_3 = 16;
@@ -103,6 +104,35 @@ static const size_t LENGTH = 36;
 static const size_t HOUR = 11;
 static const size_t MINUTE = 12;
 }  // namespace e9_page_e6
+
+// Defrost, from E9 pages 65 and 6A (38 cycles, 2026-11-23..27): while the compressor
+// runs, module 1 goes from 02 (normal) to 01 with sub-state 00 for about 7 minutes,
+// then sub-state 05, and back to 02 after 10-16 minutes in all. A compressor start
+// also passes 01 -> 02 and oil return (07) and residual operation (09) also show 01,
+// so defrost only starts from 02 while the compressor runs, and ends at 02, 07, 09 or
+// when the compressor stops.
+class DefrostDetector {
+ public:
+  void compressor(uint8_t state) {
+    this->compressor_ = state;
+    if (state == 0) this->active_ = false;
+  }
+  void module(uint8_t state, uint8_t sub_state) {
+    if (!this->active_ && state == 0x01 && (sub_state == 0x00 || sub_state == 0x05) && this->last_state_ == 0x02 &&
+        this->compressor_ == 0x02) {
+      this->active_ = true;
+    } else if (this->active_ && (state == 0x02 || sub_state == 0x07 || sub_state == 0x09)) {
+      this->active_ = false;
+    }
+    this->last_state_ = state;
+  }
+  bool active() const { return this->active_; }
+
+ private:
+  uint8_t compressor_ = 0;
+  uint8_t last_state_ = 0;
+  bool active_ = false;
+};
 
 // The VRV clock (E9 page E6) comes every 10 minutes, at about hh:m5:04 by that clock.
 // BusClock runs it on between broadcasts, so the time can be shown every minute. It
@@ -187,8 +217,10 @@ class DecoderSink {
   virtual void on_clock(uint8_t hour, uint8_t minute) = 0;
   // F5 31B @18 bit 0x02: the unit is a group master (0x12) or a member (0x10)
   virtual void on_unit_role(uint8_t /*addr*/, bool /*master*/) {}
-  // E9 page 6A: an outdoor module in sub-state 07 (hyp: defrost or oil return)
-  virtual void on_defrost(bool /*active*/) {}
+  // E9 page 6A: state and sub-state of outdoor module 1 (feed a DefrostDetector), and
+  // oil return: a module in sub-state 07, every 8.4-8.7 compressor hours (2026-11-23..27)
+  virtual void on_outdoor_module(uint8_t /*state*/, uint8_t /*sub_state*/) {}
+  virtual void on_oil_return(bool /*active*/) {}
   // F5 23B @16 low nibble: airflow direction, 0-4 fixed position (0 horizontal,
   // 4 down), 7 swing (confirmed with the iTM, 2026-11-16)
   virtual void on_unit_airflow(uint8_t /*addr*/, uint8_t /*direction*/) {}
@@ -347,8 +379,9 @@ inline void decode_frame(const uint8_t *frame, size_t length, const uint8_t *b1_
       sink.on_system_value(SystemField::COMP_SPEED_TOTAL,
                            (float) (frame[e9_page_65::COMP_SPEED_TOTAL] << 8 | frame[e9_page_65::COMP_SPEED_TOTAL + 1]));
     } else if (length == e9_page_6a::LENGTH && class_10 && page == 0x6A) {
-      sink.on_defrost(frame[e9_page_6a::SUB_STATE_1] == 0x07 || frame[e9_page_6a::SUB_STATE_2] == 0x07 ||
-                      frame[e9_page_6a::SUB_STATE_3] == 0x07);
+      sink.on_outdoor_module(frame[e9_page_6a::STATE_1], frame[e9_page_6a::SUB_STATE_1]);
+      sink.on_oil_return(frame[e9_page_6a::SUB_STATE_1] == 0x07 || frame[e9_page_6a::SUB_STATE_2] == 0x07 ||
+                         frame[e9_page_6a::SUB_STATE_3] == 0x07);
     } else if (length == e9_page_67::LENGTH && class_10 && page == 0x67) {
       sink.on_system_value(SystemField::OUTDOOR, sm88(frame, e9_page_67::OUTDOOR));
     } else if (length == e9_page_e0::LENGTH && page == 0xE0) {
