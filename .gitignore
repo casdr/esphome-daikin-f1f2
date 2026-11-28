@@ -18,3 +18,5 @@ captures/*.tsv.gz
 
 # Local CI build (tests/local_example.py)
 build/
+
+firmware/
